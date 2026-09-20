@@ -34,7 +34,7 @@ A high-performance Windows desktop application for downloading high-quality medi
 
 1. Clone repository:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/DeepX-Vision-Downloader.git
+   git clone https://github.com/junaidali123ik2018/DeepX-Vision-Downloader.git
    cd DeepX-Vision-Downloader
    ```
 
