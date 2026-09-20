@@ -1,0 +1,13 @@
+{
+  "version": "2.5.1",
+  "release_date": "2026-09-25",
+  "download_url": "https://github.com/junaidali/DeepX-Vision-Downloader/releases/download/v2.5.1/DeepX_Vision_Downloader_Setup_v2.5.1.exe",
+  "changelog": [
+    "Commercial Pro Edition release with multi-tier licensing",
+    "Added 5 Videos Free Daily Trial system with midnight auto-reset",
+    "Smart Clipboard auto-detector for instant media downloads",
+    "High-speed 8K/4K multi-threaded engine optimization",
+    "Enhanced creator folder auto-organization and duplicate detection"
+  ],
+  "mandatory": false
+}

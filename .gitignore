@@ -1,0 +1,36 @@
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Virtual Environments
+venv/
+env/
+.venv/
+
+# PyInstaller & Build artifacts
+build/
+dist/
+*.spec.bak
+
+# Inno Setup Windows Installers (Upload to GitHub Releases instead)
+dist_installer/
+
+# User & IDE specific
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Temporary & Download files
+*.tmp
+*.part
+*.ytdl
+cookies/
+downloads/
+
+# Licensing audit logs (Keep private)
+tools/generated_licenses.txt
