@@ -22,6 +22,7 @@ from app.path_manager import (
     sanitize_filename,
 )
 from app.download_history import DownloadRecord, history_store
+from app.ytdl_utils import apply_ytdl_robust_options, download_tiktok_fallback
 
 TaskCallback = Callable[[DownloadTask], None]
 
@@ -265,8 +266,12 @@ class DownloadManager:
         }
         if ffmpeg_path:
             options["ffmpeg_location"] = ffmpeg_path
+            if "AUDIO" not in task.quality.upper():
+                options["merge_output_format"] = "mp4"
         if task.speed_limit_bps:
             options["ratelimit"] = task.speed_limit_bps
+
+        apply_ytdl_robust_options(options)
         cookie_src = task.cookies_source
         if not cookie_src:
             try:
@@ -442,6 +447,14 @@ class DownloadManager:
             self._notify(task)
         except (yt_dlp.utils.DownloadError, OSError, ValueError) as error:
             err_str = str(error)
+            # Automatic fallback for TikTok if yt-dlp gets IP-blocked or encounters format issues
+            if "tiktok.com" in task.url.lower() or "douyin.com" in task.url.lower():
+                try:
+                    if download_tiktok_fallback(task, self._notify):
+                        return
+                except Exception:
+                    pass
+
             if "No video formats found" in err_str or "Unsupported URL" in err_str or "ExtractorError" in err_str:
                 try:
                     from app.image_downloader import download_image_task

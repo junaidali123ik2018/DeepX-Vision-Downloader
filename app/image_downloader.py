@@ -181,7 +181,17 @@ def extract_media_images(url: str, cookies_source: str | None = None) -> list[di
         except Exception:
             pass
 
-    # 4. Fallback to OpenGraph / HTML scraping
+    # 4. TikTok Photos & Slideshows
+    if "tiktok.com" in parsed.netloc or "douyin.com" in parsed.netloc:
+        try:
+            from app.ytdl_utils import extract_tiktok_slides
+            tk_imgs = extract_tiktok_slides(clean_url)
+            if tk_imgs:
+                return tk_imgs
+        except Exception:
+            pass
+
+    # 5. Fallback to OpenGraph / HTML scraping
     web_imgs = extract_webpage_images(clean_url, cookies_source=cookies_source)
     if web_imgs:
         return web_imgs

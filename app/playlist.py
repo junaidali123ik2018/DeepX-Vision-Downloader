@@ -10,6 +10,8 @@ from urllib.parse import unquote
 from PIL import Image
 import yt_dlp
 
+from app.ytdl_utils import apply_ytdl_robust_options
+
 
 def parse_tiktok_playlist_url(url: str) -> tuple[str, str | None]:
     """
@@ -101,6 +103,8 @@ def fetch_playlist_info(
 
     if max_items and max_items > 0:
         ydl_opts["playlist_items"] = f"1:{max_items}"
+
+    apply_ytdl_robust_options(ydl_opts)
 
     if progress_callback:
         progress_callback("Analyzing playlist / channel...")
@@ -211,6 +215,8 @@ def fetch_channel_all_playlists(
     }
     if max_playlists > 0:
         ydl_opts["playlist_items"] = f"1:{max_playlists}"
+
+    apply_ytdl_robust_options(ydl_opts)
 
     if progress_callback:
         progress_callback("Fetching creator playlists...")
@@ -448,6 +454,8 @@ def fetch_instagram_catalog(
             else:
                 ydl_opts["cookiesfrombrowser"] = (cookies_source,)
 
+        apply_ytdl_robust_options(ydl_opts)
+
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(clean_url, download=False)
@@ -640,6 +648,8 @@ def fetch_channel_catalog(
     m_handle = re.search(r"/@([^/?#]+)", clean_url)
     if m_handle:
         handle = f"@{m_handle.group(1)}"
+
+    apply_ytdl_robust_options(ydl_opts)
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
