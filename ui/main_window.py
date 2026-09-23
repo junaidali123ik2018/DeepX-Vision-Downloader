@@ -48,7 +48,6 @@ from app.telemetry import telemetry_service
 from ui.pricing_modal import PricingModal
 from ui.license_dialog import LicenseDialog
 from ui.update_modal import UpdateModal
-from ui.admin_dashboard_modal import AdminDashboardModal
 import webbrowser
 
 # Unified Color Palette with Consistent Dark & Light Mode Contrast
@@ -142,10 +141,6 @@ class HQVideoDownloaderApp(ctk.CTk):
         # Background update check (3.5s after launch)
         if getattr(self.settings, "auto_update", "Everyday") != "Disabled":
             self.after(3500, self._check_updates_background)
-
-        # Global Shortcut for Owner Admin Dashboard (Ctrl+Shift+A)
-        self.bind("<Control-Shift-Key-A>", lambda e: self._open_owner_dashboard())
-        self.bind("<Control-Shift-Key-a>", lambda e: self._open_owner_dashboard())
 
         # Startup heartbeat & device ban check
         self.after(1500, self._init_telemetry_and_ban_check)
@@ -275,19 +270,6 @@ class HQVideoDownloaderApp(ctk.CTk):
             button.pack(fill="x", padx=10, pady=1)
             self.nav_buttons[key] = button
 
-        # Owner Admin Panel (Ctrl+Shift+A)
-        ctk.CTkButton(
-            self.sidebar,
-            text=" 👑   Admin Panel",
-            anchor="w",
-            height=34,
-            corner_radius=8,
-            fg_color="#1E293B",
-            hover_color="#334155",
-            text_color="#F59E0B",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            command=self._open_owner_dashboard,
-        ).pack(side="bottom", fill="x", padx=10, pady=(2, 6))
 
         # Bottom Settings
         ctk.CTkButton(
@@ -5733,12 +5715,6 @@ class HQVideoDownloaderApp(ctk.CTk):
         except Exception:
             pass
         return True
-
-    def _open_owner_dashboard(self) -> None:
-        try:
-            AdminDashboardModal(self)
-        except Exception as ex:
-            messagebox.showerror("Admin Dashboard Error", f"Could not open Admin Dashboard:\n{ex}", parent=self)
 
     def _close(self) -> None:
         if self._refresh_job is not None:
