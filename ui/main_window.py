@@ -2686,8 +2686,25 @@ class HQVideoDownloaderApp(ctk.CTk):
         )
         folder_card.grid(row=0, column=0, padx=8, pady=8, sticky="nsew")
 
-        # Cards 1..N: Playlist Cards
-        for idx, pl in enumerate(playlists, 1):
+        # Card 1: "⚡ Shorts" Red Folder Card (if available)
+        start_idx = 1
+        if catalog.get("all_shorts_url"):
+            shorts_card = FolderCard(
+                self.channel_results_frame,
+                title="⚡ Shorts",
+                subtitle="YouTube Shorts",
+                on_view=self._on_view_all_shorts,
+                on_download=self._on_download_all_shorts,
+                icon="⚡",
+                icon_color="#DC2626",
+                folder_bg=("#FEE2E2", "#3A1719"),
+            )
+            shorts_card.grid(row=0, column=1, padx=8, pady=8, sticky="nsew")
+            start_idx = 2
+
+        # Cards start_idx..N: Playlist Cards
+        for i, pl in enumerate(playlists):
+            idx = start_idx + i
             row = idx // 4
             col = idx % 4
             pl_card = PlaylistCard(
@@ -2905,6 +2922,67 @@ class HQVideoDownloaderApp(ctk.CTk):
             except Exception as e:
                 self.after(0, lambda: self.channel_hub_status.configure(text=""))
                 self.after(0, lambda: messagebox.showerror("Error", f"Failed to queue videos: {str(e)}"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_view_all_shorts(self) -> None:
+        if not self._current_catalog:
+            return
+        target_url = self._current_catalog.get("all_shorts_url") or self._current_catalog["all_videos_url"]
+        self.channel_hub_status.configure(text="Loading YouTube Shorts... Please wait.")
+
+        def worker():
+            try:
+                title, entries = fetch_playlist_info(target_url, max_items=0)
+                shorts_entries = [e for e in entries if e.get("media_type") == "short" or "/shorts/" in str(e.get("url", ""))]
+                if not shorts_entries:
+                    shorts_entries = entries
+                def on_done():
+                    self.channel_hub_status.configure(text="")
+                    if not shorts_entries:
+                        messagebox.showwarning("No Shorts", "No YouTube Shorts found for this channel.")
+                        return
+                    VideoGridModal(
+                        self,
+                        title=f"⚡ Shorts - {self._current_catalog['channel_title']}",
+                        videos=shorts_entries,
+                        on_download_selected=lambda chosen: (
+                            self._queue_batch_with_numbering(chosen, self.channel_hub_quality_var.get()),
+                            self.show_page("downloads"),
+                            messagebox.showinfo("Downloads Started", f"Queued {len(chosen)} Short(s)!")
+                        ),
+                    )
+                self.after(0, on_done)
+            except Exception as e:
+                self.after(0, lambda: self.channel_hub_status.configure(text=""))
+                self.after(0, lambda: messagebox.showerror("Error", f"Failed to load Shorts: {str(e)}"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_download_all_shorts(self) -> None:
+        if not self._current_catalog:
+            return
+        target_url = self._current_catalog.get("all_shorts_url") or self._current_catalog["all_videos_url"]
+        self.channel_hub_status.configure(text="Queuing all channel Shorts... Please wait.")
+
+        def worker():
+            try:
+                title, entries = fetch_playlist_info(target_url, max_items=0)
+                shorts_entries = [e for e in entries if e.get("media_type") == "short" or "/shorts/" in str(e.get("url", ""))]
+                if not shorts_entries:
+                    shorts_entries = entries
+                def on_done():
+                    self.channel_hub_status.configure(text="")
+                    if not shorts_entries:
+                        messagebox.showwarning("No Shorts", "No Shorts found to download.")
+                        return
+                    self._queue_batch_with_numbering(shorts_entries, self.channel_hub_quality_var.get())
+                    self.show_page("downloads")
+                    messagebox.showinfo("Downloads Started", f"Queued {len(shorts_entries)} Shorts!")
+                self.after(0, on_done)
+            except Exception as e:
+                self.after(0, lambda: self.channel_hub_status.configure(text=""))
+                self.after(0, lambda: messagebox.showerror("Error", f"Failed to queue Shorts: {str(e)}"))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -4657,7 +4735,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             # Top header row of playlist card
             top_bar = ctk.CTkFrame(card, fg_color="transparent")
             top_bar.pack(fill="x", padx=12, pady=8)
-            top_bar.grid_columnconfigure(0, weight=1)
+            top_bar.grid_columnconfigure(2, weight=1)
 
             def on_pl_checkbox_toggle(current_p_var=p_var, current_id=pl_id):
                 checked = current_p_var.get()
@@ -4666,18 +4744,52 @@ class HQVideoDownloaderApp(ctk.CTk):
                         vv.set(checked)
                 update_global_count()
 
-            item_count_str = f"  ({pl['item_count']} videos)" if pl.get("item_count") else ""
             pl_chk = ctk.CTkCheckBox(
                 top_bar,
-                text=f"{idx:02d}.  {pl['title']}{item_count_str}",
+                text="",
                 variable=p_var,
+                width=24,
                 text_color=INK,
                 fg_color=BLUE,
                 hover_color=BLUE_HOVER,
                 font=ctk.CTkFont(size=13, weight="bold"),
                 command=on_pl_checkbox_toggle,
             )
-            pl_chk.grid(row=0, column=0, sticky="w")
+            pl_chk.grid(row=0, column=0, padx=(0, 8), sticky="w")
+
+            # Playlist cover thumbnail box (60x38)
+            pl_thumb_box = ctk.CTkFrame(top_bar, width=60, height=38, corner_radius=6, fg_color=("#E2E8F0", "#1E293B"))
+            pl_thumb_box.pack_propagate(False)
+            pl_thumb_box.grid(row=0, column=1, padx=(0, 10), sticky="w")
+
+            pl_thumb_lbl = ctk.CTkLabel(pl_thumb_box, text="📁", font=ctk.CTkFont(size=14), text_color=MUTED)
+            pl_thumb_lbl.pack(expand=True, fill="both")
+
+            pl_thumb_url = pl.get("thumbnail_url")
+            if pl_thumb_url:
+                def _load_pl_thumb(u=pl_thumb_url, lbl=pl_thumb_lbl, top=modal):
+                    try:
+                        p_img = get_remote_image(u, (60, 38))
+                        if p_img:
+                            c_img = ctk.CTkImage(light_image=p_img, dark_image=p_img, size=(60, 38))
+                            def _show():
+                                if top.winfo_exists() and lbl.winfo_exists():
+                                    lbl.configure(image=c_img, text="")
+                                    lbl.image = c_img
+                            top.after(0, _show)
+                    except Exception:
+                        pass
+                threading.Thread(target=_load_pl_thumb, daemon=True).start()
+
+            item_count_str = f"  ({pl['item_count']} videos)" if pl.get("item_count") else ""
+            pl_title_lbl = ctk.CTkLabel(
+                top_bar,
+                text=f"{idx:02d}.  {pl['title']}{item_count_str}",
+                text_color=INK,
+                font=ctk.CTkFont(size=13, weight="bold"),
+                anchor="w",
+            )
+            pl_title_lbl.grid(row=0, column=2, sticky="ew")
 
             # Accordion collapsible frame
             sub_frame = ctk.CTkFrame(card, fg_color=BACKGROUND, corner_radius=8)
@@ -4722,26 +4834,65 @@ class HQVideoDownloaderApp(ctk.CTk):
                 ctk.CTkButton(mini_bar, text="Select All", width=65, height=22, corner_radius=4, font=ctk.CTkFont(size=11), fg_color=SECONDARY_BTN, hover_color=SECONDARY_BTN_HOVER, text_color=INK, command=select_all_v).pack(side="right", padx=(4, 0))
                 ctk.CTkButton(mini_bar, text="Deselect All", width=75, height=22, corner_radius=4, font=ctk.CTkFont(size=11), fg_color=SECONDARY_BTN, hover_color=SECONDARY_BTN_HOVER, text_color=INK, command=deselect_all_v).pack(side="right")
 
-                scroll_vids = ctk.CTkScrollableFrame(target_sub, height=min(220, max(80, len(videos) * 32)), fg_color="transparent")
+                scroll_vids = ctk.CTkScrollableFrame(target_sub, height=min(240, max(90, len(videos) * 44)), fg_color="transparent")
                 scroll_vids.pack(fill="both", expand=True, padx=6, pady=(0, 6))
 
                 for v_idx, (vid, v_var) in enumerate(zip(videos, v_vars), 1):
-                    v_row = ctk.CTkFrame(scroll_vids, fg_color=SURFACE, corner_radius=6, height=30)
+                    v_row = ctk.CTkFrame(scroll_vids, fg_color=SURFACE, corner_radius=6, height=40)
                     v_row.pack(fill="x", padx=2, pady=2)
-                    v_row.grid_columnconfigure(0, weight=1)
+                    v_row.grid_columnconfigure(2, weight=1)
 
-                    dur = f"  ({format_eta(vid['duration'])})" if vid.get("duration") else ""
                     v_chk = ctk.CTkCheckBox(
                         v_row,
-                        text=f"{v_idx:02d}.  {vid['title']}{dur}",
+                        text="",
                         variable=v_var,
+                        width=22,
                         text_color=INK,
                         fg_color=BLUE,
                         hover_color=BLUE_HOVER,
-                        font=ctk.CTkFont(size=11),
                         command=sync_from_videos,
                     )
-                    v_chk.grid(row=0, column=0, sticky="w", padx=8, pady=4)
+                    v_chk.grid(row=0, column=0, padx=(8, 6), pady=4)
+
+                    # Video mini thumbnail box (48x28)
+                    v_thumb_box = ctk.CTkFrame(v_row, width=48, height=28, corner_radius=4, fg_color=("#E2E8F0", "#1E293B"))
+                    v_thumb_box.pack_propagate(False)
+                    v_thumb_box.grid(row=0, column=1, padx=(0, 8), pady=4)
+
+                    is_v_short = (
+                        vid.get("media_type") == "short"
+                        or "/shorts/" in str(vid.get("url", ""))
+                        or (vid.get("duration") and 0 < vid["duration"] <= 60 and ("youtube" in str(vid.get("url", "")) or "youtu.be" in str(vid.get("url", ""))))
+                    )
+                    v_thumb_lbl = ctk.CTkLabel(v_thumb_box, text="⚡" if is_v_short else "🎬", font=ctk.CTkFont(size=10), text_color=MUTED)
+                    v_thumb_lbl.pack(expand=True, fill="both")
+
+                    v_thumb_url = vid.get("thumbnail_url") or vid.get("thumbnail")
+                    if v_thumb_url:
+                        def _load_v_thumb(u=v_thumb_url, lbl=v_thumb_lbl, top=modal):
+                            try:
+                                p_img = get_remote_image(u, (48, 28))
+                                if p_img:
+                                    c_img = ctk.CTkImage(light_image=p_img, dark_image=p_img, size=(48, 28))
+                                    def _show():
+                                        if top.winfo_exists() and lbl.winfo_exists():
+                                            lbl.configure(image=c_img, text="")
+                                            lbl.image = c_img
+                                    top.after(0, _show)
+                            except Exception:
+                                pass
+                        threading.Thread(target=_load_v_thumb, daemon=True).start()
+
+                    dur = f"  ({format_eta(vid['duration'])})" if vid.get("duration") else ""
+                    short_flag = "  [⚡ Short]" if is_v_short else ""
+                    v_title = ctk.CTkLabel(
+                        v_row,
+                        text=f"{v_idx:02d}.  {vid['title']}{dur}{short_flag}",
+                        text_color=INK,
+                        font=ctk.CTkFont(size=11),
+                        anchor="w",
+                    )
+                    v_title.grid(row=0, column=2, sticky="ew", padx=(0, 8), pady=4)
 
             def toggle_accordion(btn, current_pl=pl, current_sub=sub_frame, state=toggle_state, current_id=pl_id):
                 if state["expanded"]:
@@ -4791,7 +4942,7 @@ class HQVideoDownloaderApp(ctk.CTk):
                 text_color=BLUE,
             )
             arrow_btn.configure(command=lambda b=arrow_btn, p=pl, s=sub_frame, st=toggle_state, pid=pl_id: toggle_accordion(b, p, s, st, pid))
-            arrow_btn.grid(row=0, column=1, padx=(8, 0))
+            arrow_btn.grid(row=0, column=3, padx=(8, 0))
             pl_expand_toggles[pl_id] = lambda b=arrow_btn, p=pl, s=sub_frame, st=toggle_state, pid=pl_id: toggle_accordion(b, p, s, st, pid)
 
         # Footer
@@ -4804,6 +4955,7 @@ class HQVideoDownloaderApp(ctk.CTk):
         ctk.CTkButton(footer, text="Cancel", width=85, fg_color=SECONDARY_BTN, hover_color=SECONDARY_BTN_HOVER, text_color=INK, command=modal.destroy).pack(side="right", padx=(8, 0))
 
         def on_confirm_batch_download():
+            sel_quality = modal_quality_var.get()
             chosen_pls = [p for p, v in zip(playlists, pl_vars) if v.get()]
             if not chosen_pls:
                 messagebox.showwarning("No Selection", "Please select at least one playlist to download.")
@@ -4867,40 +5019,116 @@ class HQVideoDownloaderApp(ctk.CTk):
 
     def _show_playlist_selection_modal(self, playlist_title: str, entries: list[dict]) -> None:
         modal = ctk.CTkToplevel(self)
-        modal.title(f"Select Videos - {playlist_title}")
-        modal.geometry("760x620")
-        modal.minsize(640, 480)
+        clean_title = playlist_title[:65] + ("..." if len(playlist_title) > 65 else "")
+        modal.title(f"Select Videos - {clean_title}")
+        modal.geometry("860x660")
+        modal.minsize(720, 520)
         modal.transient(self)
         modal.grab_set()
         modal.configure(fg_color=BACKGROUND)
 
+        # Helper to classify shorts
+        def _is_short_item(item: dict) -> bool:
+            return (
+                item.get("media_type") == "short"
+                or "/shorts/" in str(item.get("url", ""))
+                or (item.get("duration") and 0 < item["duration"] <= 60 and ("youtube" in str(item.get("url", "")) or "youtu.be" in str(item.get("url", ""))))
+            )
+
+        shorts_items = [e for e in entries if _is_short_item(e)]
+        regular_items = [e for e in entries if not _is_short_item(e)]
+        has_shorts = len(shorts_items) > 0
+
         # Header
         header = ctk.CTkFrame(modal, fg_color="transparent")
-        header.pack(fill="x", padx=26, pady=(20, 10))
+        header.pack(fill="x", padx=26, pady=(18, 10))
 
-        clean_title = playlist_title[:65] + ("..." if len(playlist_title) > 65 else "")
         ctk.CTkLabel(header, text=clean_title, text_color=INK, font=ctk.CTkFont(size=18, weight="bold"), anchor="w").pack(fill="x")
-        ctk.CTkLabel(header, text=f"Found {len(entries)} videos. Uncheck any videos you want to skip. Files will be saved with sequential numbering (01, 02, 03...).", text_color=MUTED, font=ctk.CTkFont(size=12), anchor="w").pack(fill="x", pady=(2, 0))
+        ctk.CTkLabel(
+            header,
+            text=f"Found {len(entries)} item(s). Choose videos to download. Sequential numbers (01, 02...) will be preserved.",
+            text_color=MUTED,
+            font=ctk.CTkFont(size=12),
+            anchor="w",
+        ).pack(fill="x", pady=(2, 0))
+
+        # Filter Tabs Row (if shorts exist)
+        active_filter_var = ctk.StringVar(value="All")
+        if has_shorts:
+            tab_bar = ctk.CTkFrame(modal, fg_color="transparent")
+            tab_bar.pack(fill="x", padx=26, pady=(0, 8))
+
+            tab_all = f"All ({len(entries)})"
+            tab_vids = f"🎬 Videos ({len(regular_items)})"
+            tab_shorts = f"⚡ Shorts ({len(shorts_items)})"
+
+            def on_segmented_change(val: str):
+                if "Shorts" in val:
+                    active_filter_var.set("Shorts")
+                elif "Videos" in val:
+                    active_filter_var.set("Videos")
+                else:
+                    active_filter_var.set("All")
+                _apply_filter()
+
+            seg_btn = ctk.CTkSegmentedButton(
+                tab_bar,
+                values=[tab_all, tab_vids, tab_shorts],
+                command=on_segmented_change,
+                selected_color=BLUE,
+                selected_hover_color=BLUE_HOVER,
+                font=ctk.CTkFont(size=12, weight="bold"),
+                height=32,
+            )
+            seg_btn.set(tab_all)
+            seg_btn.pack(side="left")
 
         # Selection Toolbar
         tools = ctk.CTkFrame(modal, fg_color="transparent")
         tools.pack(fill="x", padx=26, pady=(0, 10))
 
-        chk_vars: list[ctk.BooleanVar] = [ctk.BooleanVar(value=True) for _ in entries]
+        row_records: list[dict] = []
 
         def update_count():
-            selected_cnt = sum(v.get() for v in chk_vars)
+            selected_cnt = sum(r["var"].get() for r in row_records)
             count_lbl.configure(text=f"Selected: {selected_cnt} / {len(entries)}")
-            download_btn.configure(text=f"Download Selected ({selected_cnt})", state="normal" if selected_cnt > 0 else "disabled")
+            download_btn.configure(
+                text=f"Download Selected ({selected_cnt})",
+                state="normal" if selected_cnt > 0 else "disabled",
+            )
+
+        def _apply_filter():
+            current = active_filter_var.get()
+            for r in row_records:
+                show = True
+                if current == "Shorts" and not r["is_short"]:
+                    show = False
+                elif current == "Videos" and r["is_short"]:
+                    show = False
+
+                if show:
+                    r["frame"].pack(fill="x", padx=4, pady=3)
+                else:
+                    r["frame"].pack_forget()
 
         def select_all():
-            for v in chk_vars:
-                v.set(True)
+            current = active_filter_var.get()
+            for r in row_records:
+                if current == "Shorts" and not r["is_short"]:
+                    continue
+                if current == "Videos" and r["is_short"]:
+                    continue
+                r["var"].set(True)
             update_count()
 
         def deselect_all():
-            for v in chk_vars:
-                v.set(False)
+            current = active_filter_var.get()
+            for r in row_records:
+                if current == "Shorts" and not r["is_short"]:
+                    continue
+                if current == "Videos" and r["is_short"]:
+                    continue
+                r["var"].set(False)
             update_count()
 
         ctk.CTkButton(tools, text="Select All", width=85, height=28, corner_radius=6, fg_color=SECONDARY_BTN, hover_color=SECONDARY_BTN_HOVER, text_color=INK, command=select_all).pack(side="left", padx=(0, 6))
@@ -4909,34 +5137,124 @@ class HQVideoDownloaderApp(ctk.CTk):
         count_lbl = ctk.CTkLabel(tools, text=f"Selected: {len(entries)} / {len(entries)}", text_color=BLUE, font=ctk.CTkFont(size=12, weight="bold"))
         count_lbl.pack(side="left")
 
-        # Quality for playlist batch
+        # Quality dropdown
         ctk.CTkLabel(tools, text="Quality:", text_color=MUTED, font=ctk.CTkFont(size=12)).pack(side="right", padx=(8, 0))
         modal_quality_var = ctk.StringVar(value=self.quality_var.get())
         ctk.CTkOptionMenu(tools, values=QUALITY_OPTIONS, variable=modal_quality_var, width=135, height=28).pack(side="right")
 
-        # Scrollable list of items
+        # Scrollable list container
         list_container = ctk.CTkScrollableFrame(modal, corner_radius=12, fg_color=("#F1F5F9", "#111827"))
-        list_container.pack(fill="both", expand=True, padx=26, pady=(0, 14))
+        list_container.pack(fill="both", expand=True, padx=26, pady=(0, 12))
 
-        for idx, (item, var) in enumerate(zip(entries, chk_vars), 1):
-            row = ctk.CTkFrame(list_container, fg_color=SURFACE, border_width=1, border_color=BORDER, corner_radius=8, height=36)
+        for idx, item in enumerate(entries, 1):
+            is_short = _is_short_item(item)
+            var = ctk.BooleanVar(value=True)
+
+            row = ctk.CTkFrame(list_container, fg_color=SURFACE, border_width=1, border_color=BORDER, corner_radius=8, height=60)
             row.pack(fill="x", padx=4, pady=3)
-            row.grid_columnconfigure(0, weight=1)
-
-            dur_str = f"  ({format_eta(item['duration'])})" if item.get("duration") else ""
-            display_title = f"{idx:02d}.  {item['title']}{dur_str}"
+            row.grid_columnconfigure(2, weight=1)
 
             chk = ctk.CTkCheckBox(
                 row,
-                text=display_title,
+                text="",
                 variable=var,
+                width=24,
                 text_color=INK,
                 fg_color=BLUE,
                 hover_color=BLUE_HOVER,
-                font=ctk.CTkFont(size=12),
                 command=update_count,
             )
-            chk.grid(row=0, column=0, sticky="w", padx=12, pady=6)
+            chk.grid(row=0, column=0, rowspan=2, padx=(10, 8), pady=8)
+
+            # Thumbnail Box (80x46)
+            thumb_box = ctk.CTkFrame(row, width=80, height=46, corner_radius=6, fg_color=("#E2E8F0", "#1E293B"))
+            thumb_box.pack_propagate(False)
+            thumb_box.grid(row=0, column=1, rowspan=2, padx=(0, 10), pady=8)
+
+            thumb_lbl = ctk.CTkLabel(thumb_box, text="⚡" if is_short else "🎬", font=ctk.CTkFont(size=15), text_color=MUTED)
+            thumb_lbl.pack(expand=True, fill="both")
+
+            thumb_url = item.get("thumbnail_url") or item.get("thumbnail")
+            if thumb_url:
+                def _load_thumb(u=thumb_url, lbl=thumb_lbl, top=modal):
+                    try:
+                        p_img = get_remote_image(u, (80, 46))
+                        if p_img:
+                            c_img = ctk.CTkImage(light_image=p_img, dark_image=p_img, size=(80, 46))
+                            def _show():
+                                if top.winfo_exists() and lbl.winfo_exists():
+                                    lbl.configure(image=c_img, text="")
+                                    lbl.image = c_img
+                            top.after(0, _show)
+                    except Exception:
+                        pass
+                threading.Thread(target=_load_thumb, daemon=True).start()
+
+            # Video Title
+            raw_title = item.get("title") or f"Item {idx}"
+            clean_item_title = raw_title[:80] + ("..." if len(raw_title) > 80 else "")
+            title_lbl = ctk.CTkLabel(
+                row,
+                text=f"{idx:02d}.  {clean_item_title}",
+                text_color=INK,
+                font=ctk.CTkFont(size=12, weight="bold"),
+                anchor="w",
+            )
+            title_lbl.grid(row=0, column=2, sticky="ew", padx=(0, 10), pady=(7, 2))
+
+            # Meta row
+            meta_frame = ctk.CTkFrame(row, fg_color="transparent")
+            meta_frame.grid(row=1, column=2, sticky="w", padx=(0, 10), pady=(0, 7))
+
+            if is_short:
+                short_badge = ctk.CTkLabel(
+                    meta_frame,
+                    text="⚡ Short",
+                    font=ctk.CTkFont(size=10, weight="bold"),
+                    text_color=("#BE185D", "#F472B6"),
+                    fg_color=("#FCE7F3", "#4A044E"),
+                    corner_radius=4,
+                    padx=6,
+                    pady=1,
+                )
+                short_badge.pack(side="left", padx=(0, 6))
+            else:
+                vid_badge = ctk.CTkLabel(
+                    meta_frame,
+                    text="🎬 Video",
+                    font=ctk.CTkFont(size=10, weight="bold"),
+                    text_color=("#2563EB", "#60A5FA"),
+                    fg_color=("#EFF6FF", "#1E3A8A"),
+                    corner_radius=4,
+                    padx=6,
+                    pady=1,
+                )
+                vid_badge.pack(side="left", padx=(0, 6))
+
+            if item.get("duration"):
+                dur_lbl = ctk.CTkLabel(
+                    meta_frame,
+                    text=f"⏱ {format_eta(item['duration'])}",
+                    font=ctk.CTkFont(size=11),
+                    text_color=MUTED,
+                )
+                dur_lbl.pack(side="left", padx=(0, 8))
+
+            # Toggle on row click
+            def _toggle_var(v=var):
+                v.set(not v.get())
+                update_count()
+
+            row.bind("<Button-1>", lambda e, v=var: _toggle_var(v))
+            title_lbl.bind("<Button-1>", lambda e, v=var: _toggle_var(v))
+            thumb_lbl.bind("<Button-1>", lambda e, v=var: _toggle_var(v))
+
+            row_records.append({
+                "frame": row,
+                "item": item,
+                "var": var,
+                "is_short": is_short,
+            })
 
         # Footer
         footer = ctk.CTkFrame(modal, fg_color="transparent")
@@ -4945,7 +5263,8 @@ class HQVideoDownloaderApp(ctk.CTk):
         ctk.CTkButton(footer, text="Cancel", width=85, fg_color=SECONDARY_BTN, hover_color=SECONDARY_BTN_HOVER, text_color=INK, command=modal.destroy).pack(side="right", padx=(8, 0))
 
         def on_confirm_download():
-            selected_items = [(idx, item) for idx, (item, v) in enumerate(zip(entries, chk_vars), 1) if v.get()]
+            sel_quality = modal_quality_var.get()
+            selected_items = [(idx, r["item"]) for idx, r in enumerate(row_records, 1) if r["var"].get()]
             if not selected_items:
                 messagebox.showwarning("No Selection", "Please select at least one video to download.")
                 return
@@ -4954,12 +5273,12 @@ class HQVideoDownloaderApp(ctk.CTk):
             chosen_items = [it for _, it in selected_items]
             self._queue_batch_with_numbering(chosen_items, sel_quality)
             self.show_page("downloads")
-            messagebox.showinfo("Queue Updated", f"Added {len(selected_items)} video(s) to the queue!")
+            messagebox.showinfo("Queue Updated", f"Added {len(selected_items)} item(s) to the queue!")
 
         download_btn = ctk.CTkButton(
             footer,
             text=f"Download Selected ({len(entries)})",
-            width=185,
+            width=195,
             fg_color=BLUE,
             hover_color=BLUE_HOVER,
             font=ctk.CTkFont(size=13, weight="bold"),
@@ -5146,18 +5465,33 @@ class HQVideoDownloaderApp(ctk.CTk):
 
     def _show_task_menu(self, task: DownloadTask, x: int, y: int) -> None:
         menu = Menu(self, tearoff=False)
-        if task.status in {DownloadStatus.DOWNLOADING, DownloadStatus.QUEUED}:
-            menu.add_command(label="Pause", command=lambda: self._pause(task))
-        elif task.status == DownloadStatus.PAUSED:
-            menu.add_command(label="Resume", command=lambda: self._resume(task))
-        if task.status not in {DownloadStatus.COMPLETED, DownloadStatus.CANCELLED}:
-            menu.add_command(label="Cancel", command=lambda: self._cancel(task))
+        menu.add_command(label="📋 Copy Video Link", command=lambda: self._copy_task_url(task))
         menu.add_separator()
-        menu.add_command(label="Delete", command=lambda: self._confirm_delete([task]))
+        if task.status in {DownloadStatus.FAILED, DownloadStatus.CANCELLED}:
+            menu.add_command(label="🔄 Retry Download", command=lambda: self._retry(task))
+        elif task.status in {DownloadStatus.DOWNLOADING, DownloadStatus.QUEUED}:
+            menu.add_command(label="⏸ Pause", command=lambda: self._pause(task))
+        elif task.status == DownloadStatus.PAUSED:
+            menu.add_command(label="▶ Resume", command=lambda: self._resume(task))
+        if task.status not in {DownloadStatus.COMPLETED, DownloadStatus.CANCELLED, DownloadStatus.FAILED}:
+            menu.add_command(label="✕ Cancel", command=lambda: self._cancel(task))
+        menu.add_separator()
+        menu.add_command(label="🗑 Delete", command=lambda: self._confirm_delete([task]))
         try:
             menu.tk_popup(x, y)
         finally:
             menu.grab_release()
+
+    def _copy_task_url(self, task: DownloadTask) -> None:
+        if not task or not task.url:
+            return
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(task.url)
+            self.update()
+            messagebox.showinfo("Link Copied", f"Video link copied to clipboard:\n\n{task.url}")
+        except Exception:
+            pass
 
     def _delete_all(self) -> None:
         if self.tasks:

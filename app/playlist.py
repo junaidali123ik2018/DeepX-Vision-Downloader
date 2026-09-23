@@ -34,6 +34,7 @@ def normalize_channel_url(url: str, mode: str = "videos") -> str:
     """
     Normalizes YouTube or TikTok URLs based on mode:
     mode='videos': targets /videos tab
+    mode='shorts': targets /shorts tab
     mode='playlists': targets /playlists tab
     mode='playlist': direct playlist
     """
@@ -45,8 +46,20 @@ def normalize_channel_url(url: str, mode: str = "videos") -> str:
                 return f"{base}/playlists"
             elif mode == "videos":
                 return f"{base}/videos"
+            elif mode == "shorts":
+                return f"{base}/shorts"
             return base
     return url
+
+
+def is_youtube_channel_url(url: str) -> bool:
+    """Returns True if the URL points to a YouTube channel/user rather than a single video."""
+    u = url.lower().strip()
+    return (
+        ("youtube.com/@" in u or "youtube.com/channel/" in u or "youtube.com/c/" in u or "youtube.com/user/" in u)
+        and "/watch" not in u
+        and "list=" not in u
+    )
 
 
 def is_playlist_or_channel(url: str) -> bool:
@@ -106,6 +119,90 @@ def fetch_playlist_info(
 
     apply_ytdl_robust_options(ydl_opts)
 
+    def _parse_entry(e, default_media_type="video") -> dict | None:
+        v_url = e.get("url")
+        v_id = e.get("id")
+        is_short = default_media_type == "short" or "/shorts/" in str(v_url or "")
+        if v_url and not v_url.startswith("http"):
+            v_url = f"https://www.youtube.com/shorts/{v_url}" if is_short else f"https://www.youtube.com/watch?v={v_url}"
+        elif not v_url and v_id:
+            v_url = f"https://www.youtube.com/shorts/{v_id}" if is_short else f"https://www.youtube.com/watch?v={v_id}"
+
+        if not v_url:
+            return None
+
+        raw_th = e.get("thumbnail") or e.get("thumbnails")
+        thumb_url = None
+        if isinstance(raw_th, str):
+            thumb_url = raw_th
+        elif isinstance(raw_th, list) and raw_th:
+            for t in reversed(raw_th):
+                if isinstance(t, dict) and t.get("url"):
+                    thumb_url = t.get("url")
+                    break
+                elif isinstance(t, str):
+                    thumb_url = t
+                    break
+
+        return {
+            "id": v_id or "",
+            "title": e.get("title") or ("Untitled Short" if is_short else "Untitled Video"),
+            "url": v_url,
+            "duration": e.get("duration"),
+            "thumbnail": thumb_url,
+            "thumbnail_url": thumb_url,
+            "media_type": "short" if is_short else default_media_type,
+        }
+
+    # Special handling: For full YouTube channel in "all_videos" mode, grab BOTH videos and shorts
+    if is_youtube_channel_url(url) and mode == "all_videos":
+        if progress_callback:
+            progress_callback("Analyzing channel videos & Shorts...")
+        try:
+            videos_url = normalize_channel_url(url, mode="videos")
+            shorts_url = normalize_channel_url(url, mode="shorts")
+            title = extracted_title or "YouTube Channel"
+            results = []
+            seen_ids = set()
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # 1. Fetch regular videos
+                try:
+                    info_v = ydl.extract_info(videos_url, download=False)
+                    if info_v:
+                        title = extracted_title or info_v.get("title") or info_v.get("uploader") or title
+                        for e in (info_v.get("entries") or []):
+                            if not e:
+                                continue
+                            p = _parse_entry(e, default_media_type="video")
+                            if p and p["id"] not in seen_ids:
+                                seen_ids.add(p["id"])
+                                results.append(p)
+                except Exception:
+                    pass
+
+                # 2. Fetch shorts
+                try:
+                    info_s = ydl.extract_info(shorts_url, download=False)
+                    if info_s:
+                        if title == "YouTube Channel":
+                            title = extracted_title or info_s.get("title") or info_s.get("uploader") or title
+                        for e in (info_s.get("entries") or []):
+                            if not e:
+                                continue
+                            p = _parse_entry(e, default_media_type="short")
+                            if p and p["id"] not in seen_ids:
+                                seen_ids.add(p["id"])
+                                results.append(p)
+                except Exception:
+                    pass
+
+            return title, results
+        except Exception as exc:
+            if progress_callback:
+                progress_callback(f"Notice: {exc}")
+            return extracted_title or "YouTube Channel", []
+
     if progress_callback:
         progress_callback("Analyzing playlist / channel...")
 
@@ -131,37 +228,9 @@ def fetch_playlist_info(
 
             results = []
             for e in entries:
-                v_url = e.get("url")
-                v_id = e.get("id")
-                if v_url and not v_url.startswith("http"):
-                    v_url = f"https://www.youtube.com/watch?v={v_url}"
-                elif not v_url and v_id:
-                    v_url = f"https://www.youtube.com/watch?v={v_id}"
-
-                if not v_url:
-                    continue
-
-                raw_th = e.get("thumbnail") or e.get("thumbnails")
-                thumb_url = None
-                if isinstance(raw_th, str):
-                    thumb_url = raw_th
-                elif isinstance(raw_th, list) and raw_th:
-                    for t in reversed(raw_th):
-                        if isinstance(t, dict) and t.get("url"):
-                            thumb_url = t.get("url")
-                            break
-                        elif isinstance(t, str):
-                            thumb_url = t
-                            break
-
-                results.append({
-                    "id": v_id or "",
-                    "title": e.get("title") or "Untitled Video",
-                    "url": v_url,
-                    "duration": e.get("duration"),
-                    "thumbnail": thumb_url,
-                    "thumbnail_url": thumb_url,
-                })
+                parsed = _parse_entry(e, default_media_type="video")
+                if parsed:
+                    results.append(parsed)
 
             return title, results
     except Exception as exc:
@@ -628,6 +697,7 @@ def fetch_channel_catalog(
 
     playlists_url = normalize_channel_url(clean_url, mode="playlists")
     videos_url = normalize_channel_url(clean_url, mode="videos")
+    shorts_url = normalize_channel_url(clean_url, mode="shorts")
 
     ydl_opts = {
         "extract_flat": "in_playlist",
@@ -701,6 +771,7 @@ def fetch_channel_catalog(
         "channel_url": clean_url,
         "avatar_url": avatar_url,
         "all_videos_url": videos_url,
+        "all_shorts_url": shorts_url,
         "estimated_videos": estimated_videos,
         "playlists": playlists,
         "total_playlists": len(playlists),

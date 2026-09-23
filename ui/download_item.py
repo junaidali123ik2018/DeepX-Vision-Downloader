@@ -108,6 +108,10 @@ class DownloadItem(ctk.CTkFrame):
 
         for widget in (self, self.icon, self.name, self.details, self.progress, self.button):
             widget.bind("<Button-3>", self._right_click)
+            if hasattr(widget, "_label") and widget._label:
+                widget._label.bind("<Button-3>", self._right_click)
+            if hasattr(widget, "_canvas") and widget._canvas:
+                widget._canvas.bind("<Button-3>", self._right_click)
 
     def _action(self) -> None:
         if self.task.status == DownloadStatus.DOWNLOADING:

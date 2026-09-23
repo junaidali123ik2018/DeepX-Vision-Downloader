@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-import threading
 from typing import Callable
 import customtkinter as ctk
 
@@ -37,13 +36,28 @@ class VideoCardWidget(ctk.CTkFrame):
         self.thumb_frame.pack(fill="x", padx=6, pady=(6, 4))
         self.thumb_frame.pack_propagate(False)
 
+        is_short = video.get("media_type") == "short" or "/shorts/" in str(video.get("url", ""))
         self.thumb_label = ctk.CTkLabel(
             self.thumb_frame,
-            text="🎬",
+            text="⚡" if is_short else "🎬",
             font=ctk.CTkFont(size=20),
             text_color="#64748B",
         )
         self.thumb_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Top-left Type badge for Shorts
+        if is_short:
+            badge = ctk.CTkLabel(
+                self.thumb_frame,
+                text="⚡ Short",
+                font=ctk.CTkFont(size=9, weight="bold"),
+                text_color="#F8FAFC",
+                fg_color="#DC2626",
+                corner_radius=4,
+                padx=5,
+                pady=1,
+            )
+            badge.place(relx=0.06, rely=0.08, anchor="nw")
 
         # Top-right checkbox
         self.check_var = ctk.BooleanVar(value=initial_selected)
@@ -143,9 +157,13 @@ class VideoGridModal(ctk.CTkToplevel):
         self.selected_map: dict[str, bool] = {v.get("url", str(i)): True for i, v in enumerate(videos)}
         self.cards: list[VideoCardWidget] = []
 
+        self.videos_regular = [v for v in self.videos if v.get("media_type") != "short" and "/shorts/" not in str(v.get("url", ""))]
+        self.videos_shorts = [v for v in self.videos if v.get("media_type") == "short" or "/shorts/" in str(v.get("url", ""))]
+        self.current_filter = "All"
+
         self.title(f"{title} - {len(videos)} Items")
-        self.geometry("880x640")
-        self.minsize(700, 500)
+        self.geometry("900x660")
+        self.minsize(720, 500)
         self.configure(fg_color="#0F172A")
         self.transient(parent)
         self.grab_set()
@@ -158,21 +176,42 @@ class VideoGridModal(ctk.CTkToplevel):
         ctk.CTkLabel(
             top_bar,
             text=f"📁 {title}",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            font=ctk.CTkFont(size=15, weight="bold"),
             text_color="#F8FAFC",
-        ).pack(side="left", padx=20)
+        ).pack(side="left", padx=(16, 10))
 
         self.count_badge = ctk.CTkLabel(
             top_bar,
             text=f"{len(videos)} Items",
-            font=ctk.CTkFont(size=12, weight="bold"),
+            font=ctk.CTkFont(size=11, weight="bold"),
             text_color="#38BDF8",
             fg_color="#0F2440",
             corner_radius=6,
             padx=8,
             pady=2,
         )
-        self.count_badge.pack(side="left", padx=(0, 16))
+        self.count_badge.pack(side="left", padx=(0, 10))
+
+        # Filter Tabs: All / Videos / Shorts
+        if self.videos_shorts and self.videos_regular:
+            self.filter_values = [
+                f"All ({len(self.videos)})",
+                f"🎬 Videos ({len(self.videos_regular)})",
+                f"⚡ Shorts ({len(self.videos_shorts)})",
+            ]
+            self.filter_seg = ctk.CTkSegmentedButton(
+                top_bar,
+                values=self.filter_values,
+                height=28,
+                selected_color="#2563EB",
+                selected_hover_color="#1D4ED8",
+                unselected_color="#334155",
+                unselected_hover_color="#475569",
+                font=ctk.CTkFont(size=11, weight="bold"),
+                command=self._on_filter_changed,
+            )
+            self.filter_seg.set(self.filter_values[0])
+            self.filter_seg.pack(side="left", padx=(4, 10))
 
         # Select All Checkbox
         self.select_all_var = ctk.BooleanVar(value=True)
@@ -214,7 +253,7 @@ class VideoGridModal(ctk.CTkToplevel):
         self.dl_btn = ctk.CTkButton(
             bottom_bar,
             text=f"Download ({len(videos)}) ⬇",
-            width=150,
+            width=160,
             height=36,
             fg_color="#2563EB",
             hover_color="#1D4ED8",
@@ -229,19 +268,38 @@ class VideoGridModal(ctk.CTkToplevel):
 
         self._populate_cards()
 
+    def _get_active_videos(self) -> list[dict]:
+        if "Shorts" in self.current_filter:
+            return self.videos_shorts
+        elif "Videos" in self.current_filter:
+            return self.videos_regular
+        return self.videos
+
+    def _on_filter_changed(self, value: str) -> None:
+        self.current_filter = value
+        self._populate_cards()
+        self._refresh_selection_state()
+
     def _populate_cards(self) -> None:
+        for widget in self.scroll.winfo_children():
+            widget.destroy()
+        self.cards.clear()
+
+        active_list = self._get_active_videos()
         columns = 4
         for col in range(columns):
             self.scroll.grid_columnconfigure(col, weight=1, uniform="card")
 
-        for idx, video in enumerate(self.videos):
+        for idx, video in enumerate(active_list):
             row = idx // columns
             col = idx % columns
+            key = video.get("url") or str(id(video))
+            is_sel = self.selected_map.get(key, True)
             card = VideoCardWidget(
                 self.scroll,
                 video=video,
                 on_toggle=self._on_card_toggle,
-                initial_selected=True,
+                initial_selected=is_sel,
             )
             card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
             self.cards.append(card)
@@ -253,18 +311,24 @@ class VideoGridModal(ctk.CTkToplevel):
 
     def _toggle_select_all(self) -> None:
         target = self.select_all_var.get()
+        active_list = self._get_active_videos()
+        for v in active_list:
+            key = v.get("url") or str(id(v))
+            self.selected_map[key] = target
         for card in self.cards:
             card.set_selected(target)
-            key = card.video.get("url") or str(id(card.video))
-            self.selected_map[key] = target
         self._refresh_selection_state()
 
     def _refresh_selection_state(self) -> None:
-        selected_count = sum(1 for v in self.videos if self.selected_map.get(v.get("url") or str(id(v)), False))
-        total = len(self.videos)
-        self.status_lbl.configure(text=f"Selected: {selected_count} / {total}")
-        self.dl_btn.configure(text=f"Download ({selected_count}) ⬇", state="normal" if selected_count > 0 else "disabled")
-        self.select_all_var.set(selected_count == total)
+        active_list = self._get_active_videos()
+        active_selected = sum(1 for v in active_list if self.selected_map.get(v.get("url") or str(id(v)), False))
+        total_active = len(active_list)
+        total_all_selected = sum(1 for v in self.videos if self.selected_map.get(v.get("url") or str(id(v)), False))
+
+        self.status_lbl.configure(text=f"Selected: {total_all_selected} / {len(self.videos)} (Tab: {active_selected}/{total_active})")
+        self.dl_btn.configure(text=f"Download ({total_all_selected}) ⬇", state="normal" if total_all_selected > 0 else "disabled")
+        self.count_badge.configure(text=f"{total_active} Items")
+        self.select_all_var.set(active_selected == total_active and total_active > 0)
 
     def _download_now(self) -> None:
         chosen = [v for v in self.videos if self.selected_map.get(v.get("url") or str(id(v)), False)]

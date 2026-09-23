@@ -30,6 +30,9 @@ class FolderCard(ctk.CTkFrame):
         subtitle: str = "All channel videos",
         on_view: Callable[[], None] | None = None,
         on_download: Callable[[], None] | None = None,
+        icon: str = "📁",
+        icon_color=BLUE,
+        folder_bg=("#DBEAFE", "#1E3A8A"),
         **kwargs,
     ) -> None:
         super().__init__(
@@ -46,15 +49,15 @@ class FolderCard(ctk.CTkFrame):
         self.grid_propagate(False)
 
         # Folder graphic container
-        folder_box = ctk.CTkFrame(self, fg_color=("#DBEAFE", "#1E3A8A"), corner_radius=10, height=95)
+        folder_box = ctk.CTkFrame(self, fg_color=folder_bg, corner_radius=10, height=95)
         folder_box.pack(fill="x", padx=10, pady=(10, 8))
         folder_box.pack_propagate(False)
 
         ctk.CTkLabel(
             folder_box,
-            text="📁",
+            text=icon,
             font=ctk.CTkFont(size=38),
-            text_color=BLUE,
+            text_color=icon_color,
         ).pack(expand=True)
 
         # Title & Subtitle
