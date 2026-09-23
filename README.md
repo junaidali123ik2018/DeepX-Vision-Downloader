@@ -1,83 +1,43 @@
-# ⚡ DeepX Vision Downloader (Commercial Pro Edition)
+# ⚡ DeepX Vision Downloader (Pro Edition)
 
 ![DeepX Vision Downloader](assets/brand_logo.png)
 
-A high-performance Windows desktop application for downloading high-quality media (8K, 4K, 1080p, MP3, and Carousels) from YouTube, TikTok, Instagram, Facebook, X (Twitter), Vimeo, and 1,000+ websites.
+A high-performance Windows desktop application for downloading high-quality media (8K, 4K, 1080p, MP3, and Carousels) from YouTube, YouTube Shorts, TikTok, Instagram, Facebook, X (Twitter), Vimeo, and 1,000+ websites.
 
 ---
 
 ## 🌟 Features
 
-- **⚡ Multi-Platform Engine**: Supports YouTube, TikTok, Instagram, Facebook, X (Twitter), Reddit, Vimeo, SoundCloud, and 1,000+ sites powered by yt-dlp and FFmpeg.
-- **💎 Commercial Licensing**:
-  - Multi-tier activation (1 Month, 3 Months, 6 Months, 1 Year, Lifetime, and Family 5 PCs).
-  - Cryptographic hardware binding (1 License Key = 1 Device).
-  - Standalone Key Generator GUI & CLI (`tools/generate_keys.py`).
-- **⏳ 5-Video Daily Free Trial**: Automatically gives free users 5 video downloads per calendar day, resetting every midnight.
-- **🔄 In-App Auto-Updater**: Detects updates from remote `version.json`, downloads updates in the background, and upgrades silently with 1-click.
-- **📋 Smart Clipboard Auto-Detector**: Listens for copied media links and shows a floating quick-download prompt.
-- **🌐 Built-in In-App Browser**: Allows downloading restricted or age-gated videos with session cookie sync.
-- **🔥 Auto-Save Hubs**: Dedicated channel & profile crawlers for YouTube, TikTok, Instagram, and X.
-- **🖼️ Image & Carousel Downloader**: Batch downloads photo carousels and gallery albums.
-- **📁 Creator Folder Auto-Organization**: Automatically groups downloads by creator handle or channel name.
-- **🎨 Modern Fluent Dark UI**: Built with CustomTkinter, real-time download speeds, ETAs, pause/resume, and branded startup splash screen.
+- **⚡ Multi-Platform Engine**: Supports YouTube, Shorts, TikTok, Instagram, Facebook, X (Twitter), Reddit, Vimeo, SoundCloud, and 1,000+ sites.
+- **🎬 YouTube Shorts & Videos**: Dedicated extraction tabs with rich video thumbnail previews.
+- **♪ TikTok Full Support**: Downloads latest videos, watermark-free audio, and multi-photo slide carousels.
+- **🔄 Auto-Updater**: Checks for the latest features and upgrades silently in 1-click.
+- **📋 Smart Clipboard Monitor**: Automatically detects copied media URLs for instant 1-click download.
+- **🌐 Built-in Browser**: Download restricted or private content with auto-cookie session sync.
+- **📁 Creator Folder Auto-Organization**: Automatically organizes downloads by creator handle or channel name.
+- **🎨 Modern Dark UI**: Built with CustomTkinter, real-time download speeds, ETAs, pause/resume, and task context menus.
 
 ---
 
-## 🚀 Getting Started
+## 📥 Download & Installation
 
-### Prerequisites
-- Windows 10 or 11 (64-bit)
-- Python 3.10+ (If running from source)
-
-### Installation from Source
-
-1. Clone repository:
-   ```bash
-   git clone https://github.com/junaidali123ik2018/DeepX-Vision-Downloader.git
-   cd DeepX-Vision-Downloader
-   ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Launch application:
-   ```bash
-   python main.py
-   ```
+1. Go to the [Releases](https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases) section.
+2. Download the latest installer: **`DeepX_Vision_Downloader_Pro_Setup_v2.5.0.exe`**.
+3. Double-click the setup file to install. The installer will create desktop and start menu shortcuts automatically.
 
 ---
 
-## 🔑 Key Generator (For Admin / Seller)
+## 💎 License & Activation
 
-To generate license keys for customers:
+DeepX Vision Downloader includes a free daily trial (5 video downloads/day). 
 
-```bash
-# Launch Key Generator GUI
-python tools/generate_keys.py
-
-# Or via Command Line
-python tools/generate_keys.py --tier LT --hwid DXV-D9F8-A49C
-```
+To purchase a **Pro Edition License Key** (1 Month, 1 Year, or Lifetime Unlimited):
+- ✉️ **Contact Email**: [Jaidijutt0012@gmail.com](mailto:Jaidijutt0012@gmail.com)
+- Instant delivery with 1-to-1 PC activation support.
 
 ---
 
-## 📦 Building Standalone Installer
-
-To build the complete standalone Windows setup wizard (`.exe`) with Inno Setup:
-
-```bash
-python build_installer.py
-```
-
-The output file will be saved in:
-`dist_installer/DeepX_Vision_Downloader_Pro_Setup_v2.5.0.exe`
-
----
-
-## ⚖️ License & Credits
+## ⚖️ Publisher & Credits
 
 - **Publisher**: Junaid Ali
 - **Product**: DeepX Vision Downloader Pro
