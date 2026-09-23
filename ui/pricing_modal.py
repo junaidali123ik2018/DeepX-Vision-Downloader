@@ -367,7 +367,7 @@ class PricingModal(ctk.CTkToplevel):
 
         info_win = ctk.CTkToplevel(self)
         info_win.title(f"Purchase {title}")
-        info_win.geometry("520x400")
+        info_win.geometry("540x480")
         info_win.resizable(False, False)
         info_win.configure(fg_color="#0F172A")
         info_win.transient(self)
@@ -405,9 +405,29 @@ class PricingModal(ctk.CTkToplevel):
 
         ctk.CTkButton(mid_row, text="📋 Copy ID", width=80, height=28, fg_color="#334155", hover_color="#475569", command=copy_mid).pack(side="right")
 
+        email_addr = "Jaidijutt0012@gmail.com"
+
+        # Email & Contact Box
+        contact_box = ctk.CTkFrame(info_win, corner_radius=10, fg_color="#1E293B", border_width=1, border_color="#334155")
+        contact_box.pack(fill="x", padx=26, pady=(0, 14))
+
+        ctk.CTkLabel(contact_box, text="Official Purchase & Support Email:", font=ctk.CTkFont(size=11, weight="bold"), text_color="#94A3B8").pack(anchor="w", padx=14, pady=(10, 2))
+
+        email_row = ctk.CTkFrame(contact_box, fg_color="transparent")
+        email_row.pack(fill="x", padx=14, pady=(0, 10))
+
+        ctk.CTkLabel(email_row, text=email_addr, font=ctk.CTkFont(family="Consolas", size=13, weight="bold"), text_color="#38BDF8").pack(side="left")
+
+        def copy_email():
+            self.clipboard_clear()
+            self.clipboard_append(email_addr)
+            messagebox.showinfo("Copied", f"Email copied to clipboard:\n\n{email_addr}")
+
+        ctk.CTkButton(email_row, text="📋 Copy Email", width=95, height=28, fg_color="#334155", hover_color="#475569", command=copy_email).pack(side="right")
+
         ctk.CTkLabel(
             info_win,
-            text="To complete your purchase, contact Junaid Ali with your Machine ID.\nLicense keys are generated and sent immediately upon payment.",
+            text="Send your Machine ID to Jaidijutt0012@gmail.com to complete your order.\nLicense keys are generated and sent immediately upon payment.",
             font=ctk.CTkFont(size=11),
             text_color="#94A3B8",
             justify="center",
@@ -416,18 +436,35 @@ class PricingModal(ctk.CTkToplevel):
         btn_row = ctk.CTkFrame(info_win, fg_color="transparent")
         btn_row.pack(fill="x", padx=26)
 
+        def open_email():
+            subject = f"Buy DeepX Vision Pro - {title}"
+            body = f"Hi Junaid,\n\nI want to purchase DeepX Vision Pro ({title}).\nMy Machine ID: {mid}\n\nPlease send payment details and activation key.\n\nThank you!"
+            import urllib.parse
+            webbrowser.open(f"mailto:{email_addr}?subject={urllib.parse.quote(subject)}&body={urllib.parse.quote(body)}")
+
+        ctk.CTkButton(
+            btn_row,
+            text="✉️ Send Email to Buy",
+            height=36,
+            fg_color="#2563EB",
+            hover_color="#1D4ED8",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=open_email,
+        ).pack(side="left", fill="x", expand=True, padx=(0, 8))
+
         def open_chat():
             webbrowser.open("https://wa.me/?text=Hi%20Junaid,%20I%20want%20to%20buy%20DeepX%20Vision%20Pro%20(" + title + ")%20MachineID:" + mid)
 
         ctk.CTkButton(
             btn_row,
-            text="💬 Contact via WhatsApp",
+            text="💬 WhatsApp",
+            width=110,
             height=36,
             fg_color="#10B981",
             hover_color="#059669",
             font=ctk.CTkFont(size=12, weight="bold"),
             command=open_chat,
-        ).pack(side="left", fill="x", expand=True, padx=(0, 8))
+        ).pack(side="left", padx=(0, 8))
 
         ctk.CTkButton(
             btn_row,

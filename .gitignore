@@ -32,5 +32,7 @@ dist_installer/
 cookies/
 downloads/
 
-# Licensing audit logs (Keep private)
-tools/generated_licenses.txt
+# Licensing & Keygen tools (STRICTLY PRIVATE - Never upload to GitHub)
+tools/
+*activator*
+*keygen*

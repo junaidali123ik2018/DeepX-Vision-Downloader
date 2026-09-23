@@ -13,7 +13,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-SECRET_SALT = b"DEEPX_VISION_PRO_SECRET_2026_JUNAID_ALI"
+# Obfuscated key derivation with XOR masking to prevent plain binary inspection
+SECRET_SALT = bytes(
+    b ^ 0x5A
+    for b in [
+        30, 31, 31, 10, 2, 5, 12, 19, 9, 19, 21, 20, 5, 10, 8, 21, 5, 9, 31, 25, 8, 31, 14, 5,
+        104, 106, 104, 108, 5, 16, 15, 20, 27, 19, 30, 5, 27, 22, 19,
+    ]
+)
 
 TIER_DAYS = {
     "1M": 30,
