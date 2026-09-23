@@ -44,9 +44,11 @@ from app.license import license_mgr
 from app.updater import check_for_updates, update_core_engine_ytdlp
 from app.version import APP_NAME, APP_EDITION, APP_VERSION
 from app.clipboard_monitor import ClipboardMonitor
+from app.telemetry import telemetry_service
 from ui.pricing_modal import PricingModal
 from ui.license_dialog import LicenseDialog
 from ui.update_modal import UpdateModal
+from ui.admin_dashboard_modal import AdminDashboardModal
 import webbrowser
 
 # Unified Color Palette with Consistent Dark & Light Mode Contrast
@@ -140,6 +142,13 @@ class HQVideoDownloaderApp(ctk.CTk):
         # Background update check (3.5s after launch)
         if getattr(self.settings, "auto_update", "Everyday") != "Disabled":
             self.after(3500, self._check_updates_background)
+
+        # Global Shortcut for Owner Admin Dashboard (Ctrl+Shift+A)
+        self.bind("<Control-Shift-Key-A>", lambda e: self._open_owner_dashboard())
+        self.bind("<Control-Shift-Key-a>", lambda e: self._open_owner_dashboard())
+
+        # Startup heartbeat & device ban check
+        self.after(1500, self._init_telemetry_and_ban_check)
 
     def _build_shell(self) -> None:
         self.grid_columnconfigure(1, weight=1)
@@ -266,6 +275,20 @@ class HQVideoDownloaderApp(ctk.CTk):
             button.pack(fill="x", padx=10, pady=1)
             self.nav_buttons[key] = button
 
+        # Owner Admin Panel (Ctrl+Shift+A)
+        ctk.CTkButton(
+            self.sidebar,
+            text=" 👑   Admin Panel",
+            anchor="w",
+            height=34,
+            corner_radius=8,
+            fg_color="#1E293B",
+            hover_color="#334155",
+            text_color="#F59E0B",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            command=self._open_owner_dashboard,
+        ).pack(side="bottom", fill="x", padx=10, pady=(2, 6))
+
         # Bottom Settings
         ctk.CTkButton(
             self.sidebar,
@@ -277,7 +300,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             hover_color="#2563EB",
             text_color="#FFFFFF",
             command=self._open_settings_dialog,
-        ).pack(side="bottom", fill="x", padx=10, pady=(6, 14))
+        ).pack(side="bottom", fill="x", padx=10, pady=(6, 8))
 
         # Pro Tip Card in sidebar
         protip_card = ctk.CTkFrame(
@@ -2772,6 +2795,8 @@ class HQVideoDownloaderApp(ctk.CTk):
         ).pack(side="left")
 
     def _queue_batch_with_numbering(self, items: list[dict], quality: str) -> None:
+        if not self._check_device_not_banned():
+            return
         if not items:
             return
         self.empty_state.pack_forget()
@@ -5334,6 +5359,9 @@ class HQVideoDownloaderApp(ctk.CTk):
             return result_holder[0]
 
     def _queue_urls(self, urls: list[str]) -> bool:
+        if not self._check_device_not_banned():
+            return False
+
         valid, invalid = [], []
         for url in urls:
             parsed = urlparse(url)
@@ -5644,14 +5672,73 @@ class HQVideoDownloaderApp(ctk.CTk):
         active = 0
         for task_id, item in list(self.items.items()):
             item.refresh()
-            if self.tasks[task_id].status == DownloadStatus.DOWNLOADING:
+            t = self.tasks[task_id]
+            if t.status == DownloadStatus.DOWNLOADING:
                 active += 1
+            elif t.status == DownloadStatus.COMPLETED:
+                if not getattr(t, "_telemetry_reported", False):
+                    t._telemetry_reported = True
+                    try:
+                        telemetry_service.report_download_event_async(
+                            machine_id=license_mgr.machine_id,
+                            url=t.url,
+                            bytes_downloaded=t.downloaded or t.total or 0,
+                        )
+                    except Exception:
+                        pass
         total = len(self.tasks)
         if hasattr(self, "queue_label"):
             self.queue_label.configure(text=f"{active} active  •  {total} total" if total else "No downloads yet")
         if getattr(self, "_current_page", "") == "dashboard":
             self._refresh_dashboard_metrics()
         self._schedule_refresh()
+
+    # -------------------------------------------------------------
+    # Telemetry, Ban Checking & Owner Dashboard Helpers
+    # -------------------------------------------------------------
+    def _init_telemetry_and_ban_check(self) -> None:
+        def _check_worker():
+            try:
+                is_pro = license_mgr.is_pro()
+                tier = license_mgr.get_license_tier()
+                telemetry_service.report_session_start_async(license_mgr.machine_id, is_pro, tier)
+                is_banned, reason = telemetry_service.check_device_ban(license_mgr.machine_id)
+                if is_banned:
+                    self.after(0, lambda: self._show_device_suspended_lock(reason))
+            except Exception:
+                pass
+
+        threading.Thread(target=_check_worker, daemon=True).start()
+
+    def _show_device_suspended_lock(self, reason: str = "") -> None:
+        if getattr(self, "_device_suspended_shown", False):
+            return
+        self._device_suspended_shown = True
+        msg = (
+            f"🚫 ACCESS SUSPENDED\n\n"
+            f"This machine (Device ID: {license_mgr.machine_id}) has been suspended by the administrator.\n\n"
+            f"Reason: {reason or 'Unauthorized access or license revocation'}\n\n"
+            f"All downloads and features have been disabled on this computer.\n\n"
+            f"Contact administrator for reinstatement:\n"
+            f"Jaidijutt0012@gmail.com"
+        )
+        messagebox.showerror("Device Suspended", msg, parent=self)
+
+    def _check_device_not_banned(self) -> bool:
+        try:
+            is_banned, reason = telemetry_service.check_device_ban(license_mgr.machine_id)
+            if is_banned:
+                self._show_device_suspended_lock(reason)
+                return False
+        except Exception:
+            pass
+        return True
+
+    def _open_owner_dashboard(self) -> None:
+        try:
+            AdminDashboardModal(self)
+        except Exception as ex:
+            messagebox.showerror("Admin Dashboard Error", f"Could not open Admin Dashboard:\n{ex}", parent=self)
 
     def _close(self) -> None:
         if self._refresh_job is not None:

@@ -197,6 +197,18 @@ class DownloadManager:
         return format_str, postprocessors
 
     def _download(self, task: DownloadTask) -> None:
+        try:
+            from app.telemetry import telemetry_service
+            is_banned, ban_reason = telemetry_service.check_device_ban()
+            if is_banned:
+                with task.lock:
+                    task.status = DownloadStatus.FAILED
+                    task.error = f"Device Suspended: {ban_reason}"
+                self._notify(task)
+                return
+        except Exception:
+            pass
+
         from app.image_downloader import is_image_request, download_image_task
         if is_image_request(task):
             download_image_task(task, self._notify)
