@@ -29,15 +29,24 @@ def is_platform_cookie_authenticated(platform: str, path_or_src: str | Path | No
         content = p.read_text(encoding="utf-8", errors="ignore")
         p_lower = platform.lower()
         if "instagram" in p_lower:
-            return ("sessionid" in content or "ds_user_id" in content)
+            return any(k in content for k in ["sessionid", "ds_user_id", "csrftoken"])
         elif "youtube" in p_lower or "google" in p_lower:
-            return ("SAPISID" in content or "SSID" in content or "LOGIN_INFO" in content or "__Secure-3PSID" in content)
+            return any(k in content for k in [
+                "SAPISID", "SSID", "LOGIN_INFO", "__Secure-3PSID", "__Secure-1PSID",
+                "__Secure-3PAPISID", "SIDCC", "\tSID\t", "\tHSID\t", "\tAPISID\t"
+            ])
         elif "tiktok" in p_lower:
-            return ("sessionid" in content or "sid_tt" in content or "sessionid_ss" in content)
+            return any(k in content for k in [
+                "sessionid", "sid_tt", "sessionid_ss", "sid_guard", "uid_tt", "passport_csrf_token"
+            ])
         elif "facebook" in p_lower:
-            return ("c_user" in content or "xs" in content)
+            return any(k in content for k in [
+                "c_user", "xs", "fr", "datr"
+            ])
         elif "twitter" in p_lower or p_lower == "x":
-            return ("auth_token" in content or "ct0" in content)
+            return any(k in content for k in [
+                "auth_token", "ct0", "twid"
+            ])
         return p.stat().st_size > 300
     except Exception:
         return False
@@ -52,6 +61,7 @@ class SettingsDialog(ctk.CTkToplevel):
         initial_tab: str = "basic",
     ) -> None:
         super().__init__(parent)
+        self.main_app = parent
         self.settings = settings
         self.on_save = on_save
 
@@ -344,9 +354,10 @@ class SettingsDialog(ctk.CTkToplevel):
                 is_authed = True
                 display_source = "Built-in Browser"
                 self.settings.authorized_accounts[key] = str(b_cookie)
+            elif source and Path(str(source)).is_file():
+                is_authed = True
+                display_source = "Cookie File"
             else:
-                if source and not is_platform_cookie_authenticated(key, source):
-                    self.settings.authorized_accounts.pop(key, None)
                 is_authed = False
                 display_source = None
 
@@ -386,6 +397,7 @@ class SettingsDialog(ctk.CTkToplevel):
             (existing and existing in {"chrome", "firefox", "edge", "opera", "brave"})
             or is_platform_cookie_authenticated(key, existing)
             or is_platform_cookie_authenticated(key, b_cookie)
+            or (existing and Path(str(existing)).is_file())
         )
         if is_authed:
             # Logout
@@ -405,7 +417,7 @@ class SettingsDialog(ctk.CTkToplevel):
         # Offer login options
         choice_win = ctk.CTkToplevel(self)
         choice_win.title(f"Authorize {name}")
-        choice_win.geometry("420x290")
+        choice_win.geometry("440x350")
         choice_win.resizable(False, False)
         choice_win.configure(fg_color="#1E293B")
         choice_win.transient(self)
@@ -420,20 +432,22 @@ class SettingsDialog(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             choice_win,
-            text="Choose how you'd like to link your account:\n(For best results, import a cookies.txt file exported from your browser)",
+            text="Choose how you'd like to link your account:\n(Built-in Browser keeps your session permanently saved)",
             font=ctk.CTkFont(size=11),
             text_color="#94A3B8",
             justify="center",
         ).pack(pady=(0, 12))
 
-        # Option 1: Browser cookies (Chrome / Edge / Firefox)
         def _use_browser(browser_name: str) -> None:
             self.settings.authorized_accounts[key] = browser_name
             self.on_save(self.settings)
             self.auth_labels[key].configure(text=f"Authorized ({browser_name})", text_color="#34D399")
             self.auth_btns[key].configure(text="Log Out", fg_color="#475569")
             choice_win.destroy()
-            messagebox.showinfo("Success", f"{name} authorized successfully using {browser_name.title()} session!\nNote: Ensure {browser_name.title()} is closed when downloading so cookies can be accessed.")
+            messagebox.showinfo(
+                "Success",
+                f"{name} authorized successfully using {browser_name.title()} session!\nNote: Ensure {browser_name.title()} is closed when downloading so cookies can be accessed.",
+            )
 
         def _import_file() -> None:
             file_path = filedialog.askopenfilename(
@@ -455,17 +469,22 @@ class SettingsDialog(ctk.CTkToplevel):
         def _use_in_app_browser() -> None:
             login_urls = {
                 "instagram": "https://www.instagram.com/accounts/login/",
-                "youtube": "https://accounts.google.com/ServiceLogin?service=youtube",
+                "youtube": "https://www.youtube.com/signin",
                 "tiktok": "https://www.tiktok.com/login",
                 "facebook": "https://www.facebook.com/login/",
                 "x": "https://x.com/i/flow/login",
             }
             target_url = login_urls.get(key, "https://www.google.com")
-            BrowserManager.open_browser(target_url)
+            port = None
+            if hasattr(self, "main_app") and hasattr(self.main_app, "ipc_server") and self.main_app.ipc_server:
+                port = self.main_app.ipc_server.port
+            elif hasattr(self.master, "ipc_server") and self.master.ipc_server:
+                port = self.master.ipc_server.port
+            BrowserManager.open_browser(target_url, port)
             choice_win.destroy()
             messagebox.showinfo(
                 "Browser Opened",
-                f"The In-App Browser has opened for {name}.\n\nPlease enter your login credentials inside the browser window.\nOnce logged in, your session is saved automatically!",
+                f"The In-App Browser has opened for {name}.\n\nPlease log into your account in the browser window.\nOnce logged in, your session is saved automatically and permanently!",
             )
 
         btn_box = ctk.CTkFrame(choice_win, fg_color="transparent")
@@ -473,7 +492,7 @@ class SettingsDialog(ctk.CTkToplevel):
 
         ctk.CTkButton(
             btn_box,
-            text="🌐 Log In via Built-in Browser (Automatic)",
+            text="🌐 Log In via Built-in Browser (Automatic & Permanent)",
             height=36,
             fg_color="#2563EB",
             hover_color="#1D4ED8",
@@ -493,11 +512,20 @@ class SettingsDialog(ctk.CTkToplevel):
 
         ctk.CTkButton(
             btn_box,
-            text="🌐 Use Chrome / Edge Session",
+            text="🌐 Use Google Chrome Session",
             height=32,
             fg_color="#334155",
             hover_color="#475569",
             command=lambda: _use_browser("chrome"),
+        ).pack(fill="x", pady=4)
+
+        ctk.CTkButton(
+            btn_box,
+            text="🌐 Use Microsoft Edge Session",
+            height=32,
+            fg_color="#334155",
+            hover_color="#475569",
+            command=lambda: _use_browser("edge"),
         ).pack(fill="x", pady=4)
 
         ctk.CTkButton(

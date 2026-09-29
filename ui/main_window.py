@@ -1325,6 +1325,7 @@ class HQVideoDownloaderApp(ctk.CTk):
 
         # Quality Dropdown
         self.quality_var = ctk.StringVar(value=self.settings.default_quality if self.settings.default_quality in QUALITY_OPTIONS else "Best Available")
+        self.speed_var = ctk.StringVar(value=self.settings.default_speed_limit)
         self.quality_menu = ctk.CTkOptionMenu(
             input_card,
             values=QUALITY_OPTIONS,
@@ -2781,9 +2782,18 @@ class HQVideoDownloaderApp(ctk.CTk):
             return
         if not items:
             return
+
+        # Enforce free daily limit if applicable
+        can_dl, _ = license_mgr.can_download(len(items))
+        if not can_dl:
+            LicenseDialog(self, is_limit_reached=True, on_status_changed=self._update_pro_badge_ui)
+            return
+
         self.empty_state.pack_forget()
         dest_folder = str(self.settings.resolved_download_folder())
-        speed_limit = parse_speed_limit(self.speed_var.get())
+        speed_val = getattr(self, "speed_var", None)
+        speed_str = speed_val.get() if speed_val else self.settings.default_speed_limit
+        speed_limit = parse_speed_limit(speed_str)
 
         # Determine creator context from active catalogs if available
         creator = ""
@@ -2797,7 +2807,9 @@ class HQVideoDownloaderApp(ctk.CTk):
         # Check for duplicates in history and on disk
         duplicates = []
         for it in items:
-            u = it.get("url", "")
+            u = it.get("url") or it.get("webpage_url") or it.get("original_url") or ""
+            if not u:
+                continue
             title = it.get("title", "")
             rec = history_store.find_duplicate(url=u, creator=creator, title=title, check_disk=True)
             if rec:
@@ -2807,8 +2819,9 @@ class HQVideoDownloaderApp(ctk.CTk):
         if duplicates:
             dup_dicts = []
             for it, rec in duplicates:
+                u_item = it.get("url") or it.get("webpage_url") or it.get("original_url") or ""
                 dup_dicts.append({
-                    "url": it.get("url", ""),
+                    "url": u_item,
                     "title": rec.title or it.get("title", "Untitled"),
                     "creator": rec.creator or creator or "Unknown",
                     "filepath": rec.saved_filepath,
@@ -2823,8 +2836,8 @@ class HQVideoDownloaderApp(ctk.CTk):
             self.wait_window(dialog)
             dec, sel = decision_result[0], decision_result[1]
 
-            dup_urls_set = {it.get("url") for it, _ in duplicates}
-            non_duplicates = [it for it in items if it.get("url") not in dup_urls_set]
+            dup_urls_set = {it.get("url") or it.get("webpage_url") or it.get("original_url") for it, _ in duplicates}
+            non_duplicates = [it for it in items if (it.get("url") or it.get("webpage_url") or it.get("original_url")) not in dup_urls_set]
             for it in non_duplicates:
                 items_to_queue.append((it, False))
 
@@ -2834,7 +2847,8 @@ class HQVideoDownloaderApp(ctk.CTk):
             elif dec == "download_selected":
                 selected_urls = {d["url"] for d in sel}
                 for it, _ in duplicates:
-                    if it.get("url") in selected_urls:
+                    u_it = it.get("url") or it.get("webpage_url") or it.get("original_url")
+                    if u_it in selected_urls:
                         items_to_queue.append((it, True))
         else:
             for it in items:
@@ -2844,14 +2858,20 @@ class HQVideoDownloaderApp(ctk.CTk):
             messagebox.showinfo("No Downloads Queued", "All duplicate videos were skipped.")
             return
 
+        license_mgr.record_downloads(len(items_to_queue))
+        self._update_pro_badge_ui()
+
         for num, (item, is_dup) in enumerate(items_to_queue, 1):
+            item_url = item.get("url") or item.get("webpage_url") or item.get("original_url") or ""
+            if not item_url:
+                continue
             original_title = sanitize_filename(item.get("title", "Video"))
-            cookie_src = self._get_cookie_source_for_url(item["url"])
-            p, mid, c_meta, _ = extract_media_identity(item["url"])
+            cookie_src = self._get_cookie_source_for_url(item_url)
+            p, mid, c_meta, _ = extract_media_identity(item_url)
             item_creator = creator or c_meta
 
             task = DownloadTask(
-                url=item["url"],
+                url=item_url,
                 destination=dest_folder,
                 quality=quality,
                 speed_limit_bps=speed_limit,
@@ -2876,6 +2896,10 @@ class HQVideoDownloaderApp(ctk.CTk):
             item_widget.pack(fill="x", padx=6, pady=5)
             self.items[task.id] = item_widget
             self.manager.add(task)
+            if num % 25 == 0:
+                self.update_idletasks()
+
+        self._filter_task_list()
 
     def _on_view_all_files(self) -> None:
         if not self._current_catalog:
@@ -4152,11 +4176,11 @@ class HQVideoDownloaderApp(ctk.CTk):
                 from ui.settings_dialog import is_platform_cookie_authenticated
                 if is_platform_cookie_authenticated(platform, cookies_path):
                     self.settings.authorized_accounts[platform] = cookies_path
+                    if platform == "youtube":
+                        self.settings.authorized_accounts["google"] = cookies_path
+                    elif platform == "x":
+                        self.settings.authorized_accounts["twitter"] = cookies_path
                     self.store.save(self.settings)
-                else:
-                    if platform in self.settings.authorized_accounts:
-                        self.settings.authorized_accounts.pop(platform, None)
-                        self.store.save(self.settings)
 
         self.after(0, _do_sync)
 
@@ -4729,6 +4753,10 @@ class HQVideoDownloaderApp(ctk.CTk):
         modal_quality_var = ctk.StringVar(value=self.quality_var.get())
         ctk.CTkOptionMenu(tools, values=QUALITY_OPTIONS, variable=modal_quality_var, width=135, height=28).pack(side="right")
 
+        # Footer (packed first with side='bottom' so it is never pushed off-screen)
+        footer = ctk.CTkFrame(modal, fg_color="transparent")
+        footer.pack(fill="x", side="bottom", padx=26, pady=16)
+
         # Scrollable list of playlist cards
         list_container = ctk.CTkScrollableFrame(modal, corner_radius=12, fg_color=("#F1F5F9", "#111827"))
         list_container.pack(fill="both", expand=True, padx=26, pady=(0, 12))
@@ -4952,9 +4980,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             arrow_btn.grid(row=0, column=3, padx=(8, 0))
             pl_expand_toggles[pl_id] = lambda b=arrow_btn, p=pl, s=sub_frame, st=toggle_state, pid=pl_id: toggle_accordion(b, p, s, st, pid)
 
-        # Footer
-        footer = ctk.CTkFrame(modal, fg_color="transparent")
-        footer.pack(fill="x", side="bottom", padx=26, pady=16)
+        # Footer buttons and actions
 
         status_bar = ctk.CTkLabel(footer, text="", text_color=MUTED, font=ctk.CTkFont(size=11))
         status_bar.pack(side="left")
@@ -5025,273 +5051,22 @@ class HQVideoDownloaderApp(ctk.CTk):
         download_btn.pack(side="right")
 
     def _show_playlist_selection_modal(self, playlist_title: str, entries: list[dict]) -> None:
-        modal = ctk.CTkToplevel(self)
         clean_title = playlist_title[:65] + ("..." if len(playlist_title) > 65 else "")
-        modal.title(f"Select Videos - {clean_title}")
-        modal.geometry("860x660")
-        modal.minsize(720, 520)
-        modal.transient(self)
-        modal.grab_set()
-        modal.configure(fg_color=BACKGROUND)
+        sel_quality = self.quality_var.get() if hasattr(self, "quality_var") else "Best Available"
 
-        # Helper to classify shorts
-        def _is_short_item(item: dict) -> bool:
-            return (
-                item.get("media_type") == "short"
-                or "/shorts/" in str(item.get("url", ""))
-                or (item.get("duration") and 0 < item["duration"] <= 60 and ("youtube" in str(item.get("url", "")) or "youtu.be" in str(item.get("url", ""))))
-            )
-
-        shorts_items = [e for e in entries if _is_short_item(e)]
-        regular_items = [e for e in entries if not _is_short_item(e)]
-        has_shorts = len(shorts_items) > 0
-
-        # Header
-        header = ctk.CTkFrame(modal, fg_color="transparent")
-        header.pack(fill="x", padx=26, pady=(18, 10))
-
-        ctk.CTkLabel(header, text=clean_title, text_color=INK, font=ctk.CTkFont(size=18, weight="bold"), anchor="w").pack(fill="x")
-        ctk.CTkLabel(
-            header,
-            text=f"Found {len(entries)} item(s). Choose videos to download. Sequential numbers (01, 02...) will be preserved.",
-            text_color=MUTED,
-            font=ctk.CTkFont(size=12),
-            anchor="w",
-        ).pack(fill="x", pady=(2, 0))
-
-        # Filter Tabs Row (if shorts exist)
-        active_filter_var = ctk.StringVar(value="All")
-        if has_shorts:
-            tab_bar = ctk.CTkFrame(modal, fg_color="transparent")
-            tab_bar.pack(fill="x", padx=26, pady=(0, 8))
-
-            tab_all = f"All ({len(entries)})"
-            tab_vids = f"🎬 Videos ({len(regular_items)})"
-            tab_shorts = f"⚡ Shorts ({len(shorts_items)})"
-
-            def on_segmented_change(val: str):
-                if "Shorts" in val:
-                    active_filter_var.set("Shorts")
-                elif "Videos" in val:
-                    active_filter_var.set("Videos")
-                else:
-                    active_filter_var.set("All")
-                _apply_filter()
-
-            seg_btn = ctk.CTkSegmentedButton(
-                tab_bar,
-                values=[tab_all, tab_vids, tab_shorts],
-                command=on_segmented_change,
-                selected_color=BLUE,
-                selected_hover_color=BLUE_HOVER,
-                font=ctk.CTkFont(size=12, weight="bold"),
-                height=32,
-            )
-            seg_btn.set(tab_all)
-            seg_btn.pack(side="left")
-
-        # Selection Toolbar
-        tools = ctk.CTkFrame(modal, fg_color="transparent")
-        tools.pack(fill="x", padx=26, pady=(0, 10))
-
-        row_records: list[dict] = []
-
-        def update_count():
-            selected_cnt = sum(r["var"].get() for r in row_records)
-            count_lbl.configure(text=f"Selected: {selected_cnt} / {len(entries)}")
-            download_btn.configure(
-                text=f"Download Selected ({selected_cnt})",
-                state="normal" if selected_cnt > 0 else "disabled",
-            )
-
-        def _apply_filter():
-            current = active_filter_var.get()
-            for r in row_records:
-                show = True
-                if current == "Shorts" and not r["is_short"]:
-                    show = False
-                elif current == "Videos" and r["is_short"]:
-                    show = False
-
-                if show:
-                    r["frame"].pack(fill="x", padx=4, pady=3)
-                else:
-                    r["frame"].pack_forget()
-
-        def select_all():
-            current = active_filter_var.get()
-            for r in row_records:
-                if current == "Shorts" and not r["is_short"]:
-                    continue
-                if current == "Videos" and r["is_short"]:
-                    continue
-                r["var"].set(True)
-            update_count()
-
-        def deselect_all():
-            current = active_filter_var.get()
-            for r in row_records:
-                if current == "Shorts" and not r["is_short"]:
-                    continue
-                if current == "Videos" and r["is_short"]:
-                    continue
-                r["var"].set(False)
-            update_count()
-
-        ctk.CTkButton(tools, text="Select All", width=85, height=28, corner_radius=6, fg_color=SECONDARY_BTN, hover_color=SECONDARY_BTN_HOVER, text_color=INK, command=select_all).pack(side="left", padx=(0, 6))
-        ctk.CTkButton(tools, text="Deselect All", width=95, height=28, corner_radius=6, fg_color=SECONDARY_BTN, hover_color=SECONDARY_BTN_HOVER, text_color=INK, command=deselect_all).pack(side="left", padx=(0, 12))
-
-        count_lbl = ctk.CTkLabel(tools, text=f"Selected: {len(entries)} / {len(entries)}", text_color=BLUE, font=ctk.CTkFont(size=12, weight="bold"))
-        count_lbl.pack(side="left")
-
-        # Quality dropdown
-        ctk.CTkLabel(tools, text="Quality:", text_color=MUTED, font=ctk.CTkFont(size=12)).pack(side="right", padx=(8, 0))
-        modal_quality_var = ctk.StringVar(value=self.quality_var.get())
-        ctk.CTkOptionMenu(tools, values=QUALITY_OPTIONS, variable=modal_quality_var, width=135, height=28).pack(side="right")
-
-        # Scrollable list container
-        list_container = ctk.CTkScrollableFrame(modal, corner_radius=12, fg_color=("#F1F5F9", "#111827"))
-        list_container.pack(fill="both", expand=True, padx=26, pady=(0, 12))
-
-        for idx, item in enumerate(entries, 1):
-            is_short = _is_short_item(item)
-            var = ctk.BooleanVar(value=True)
-
-            row = ctk.CTkFrame(list_container, fg_color=SURFACE, border_width=1, border_color=BORDER, corner_radius=8, height=60)
-            row.pack(fill="x", padx=4, pady=3)
-            row.grid_columnconfigure(2, weight=1)
-
-            chk = ctk.CTkCheckBox(
-                row,
-                text="",
-                variable=var,
-                width=24,
-                text_color=INK,
-                fg_color=BLUE,
-                hover_color=BLUE_HOVER,
-                command=update_count,
-            )
-            chk.grid(row=0, column=0, rowspan=2, padx=(10, 8), pady=8)
-
-            # Thumbnail Box (80x46)
-            thumb_box = ctk.CTkFrame(row, width=80, height=46, corner_radius=6, fg_color=("#E2E8F0", "#1E293B"))
-            thumb_box.pack_propagate(False)
-            thumb_box.grid(row=0, column=1, rowspan=2, padx=(0, 10), pady=8)
-
-            thumb_lbl = ctk.CTkLabel(thumb_box, text="⚡" if is_short else "🎬", font=ctk.CTkFont(size=15), text_color=MUTED)
-            thumb_lbl.pack(expand=True, fill="both")
-
-            thumb_url = item.get("thumbnail_url") or item.get("thumbnail")
-            if thumb_url:
-                def _load_thumb(u=thumb_url, lbl=thumb_lbl, top=modal):
-                    try:
-                        p_img = get_remote_image(u, (80, 46))
-                        if p_img:
-                            c_img = ctk.CTkImage(light_image=p_img, dark_image=p_img, size=(80, 46))
-                            def _show():
-                                if top.winfo_exists() and lbl.winfo_exists():
-                                    lbl.configure(image=c_img, text="")
-                                    lbl.image = c_img
-                            top.after(0, _show)
-                    except Exception:
-                        pass
-                threading.Thread(target=_load_thumb, daemon=True).start()
-
-            # Video Title
-            raw_title = item.get("title") or f"Item {idx}"
-            clean_item_title = raw_title[:80] + ("..." if len(raw_title) > 80 else "")
-            title_lbl = ctk.CTkLabel(
-                row,
-                text=f"{idx:02d}.  {clean_item_title}",
-                text_color=INK,
-                font=ctk.CTkFont(size=12, weight="bold"),
-                anchor="w",
-            )
-            title_lbl.grid(row=0, column=2, sticky="ew", padx=(0, 10), pady=(7, 2))
-
-            # Meta row
-            meta_frame = ctk.CTkFrame(row, fg_color="transparent")
-            meta_frame.grid(row=1, column=2, sticky="w", padx=(0, 10), pady=(0, 7))
-
-            if is_short:
-                short_badge = ctk.CTkLabel(
-                    meta_frame,
-                    text="⚡ Short",
-                    font=ctk.CTkFont(size=10, weight="bold"),
-                    text_color=("#BE185D", "#F472B6"),
-                    fg_color=("#FCE7F3", "#4A044E"),
-                    corner_radius=4,
-                    padx=6,
-                    pady=1,
-                )
-                short_badge.pack(side="left", padx=(0, 6))
-            else:
-                vid_badge = ctk.CTkLabel(
-                    meta_frame,
-                    text="🎬 Video",
-                    font=ctk.CTkFont(size=10, weight="bold"),
-                    text_color=("#2563EB", "#60A5FA"),
-                    fg_color=("#EFF6FF", "#1E3A8A"),
-                    corner_radius=4,
-                    padx=6,
-                    pady=1,
-                )
-                vid_badge.pack(side="left", padx=(0, 6))
-
-            if item.get("duration"):
-                dur_lbl = ctk.CTkLabel(
-                    meta_frame,
-                    text=f"⏱ {format_eta(item['duration'])}",
-                    font=ctk.CTkFont(size=11),
-                    text_color=MUTED,
-                )
-                dur_lbl.pack(side="left", padx=(0, 8))
-
-            # Toggle on row click
-            def _toggle_var(v=var):
-                v.set(not v.get())
-                update_count()
-
-            row.bind("<Button-1>", lambda e, v=var: _toggle_var(v))
-            title_lbl.bind("<Button-1>", lambda e, v=var: _toggle_var(v))
-            thumb_lbl.bind("<Button-1>", lambda e, v=var: _toggle_var(v))
-
-            row_records.append({
-                "frame": row,
-                "item": item,
-                "var": var,
-                "is_short": is_short,
-            })
-
-        # Footer
-        footer = ctk.CTkFrame(modal, fg_color="transparent")
-        footer.pack(fill="x", side="bottom", padx=26, pady=16)
-
-        ctk.CTkButton(footer, text="Cancel", width=85, fg_color=SECONDARY_BTN, hover_color=SECONDARY_BTN_HOVER, text_color=INK, command=modal.destroy).pack(side="right", padx=(8, 0))
-
-        def on_confirm_download():
-            sel_quality = modal_quality_var.get()
-            selected_items = [(idx, r["item"]) for idx, r in enumerate(row_records, 1) if r["var"].get()]
-            if not selected_items:
-                messagebox.showwarning("No Selection", "Please select at least one video to download.")
-                return
-
-            modal.destroy()
-            chosen_items = [it for _, it in selected_items]
-            self._queue_batch_with_numbering(chosen_items, sel_quality)
+        def _on_download(chosen: list[dict], quality: str = sel_quality) -> None:
+            self._queue_batch_with_numbering(chosen, quality)
             self.show_page("downloads")
-            messagebox.showinfo("Queue Updated", f"Added {len(selected_items)} item(s) to the queue!")
+            messagebox.showinfo("Downloads Started", f"Queued {len(chosen)} video(s) from {clean_title}!")
 
-        download_btn = ctk.CTkButton(
-            footer,
-            text=f"Download Selected ({len(entries)})",
-            width=195,
-            fg_color=BLUE,
-            hover_color=BLUE_HOVER,
-            font=ctk.CTkFont(size=13, weight="bold"),
-            command=on_confirm_download,
+        VideoGridModal(
+            self,
+            title=clean_title,
+            videos=entries,
+            on_download_selected=_on_download,
+            initial_quality=sel_quality,
         )
-        download_btn.pack(side="right")
+
 
     def _get_cookie_source_for_url(self, url: str) -> str | None:
         platform = detect_platform_from_url(url)
@@ -5299,14 +5074,26 @@ class HQVideoDownloaderApp(ctk.CTk):
         explicit = self.settings.authorized_accounts.get(platform)
         if explicit:
             return explicit
-        if platform == "twitter":
-            explicit_x = self.settings.authorized_accounts.get("x")
+        if platform in {"x", "twitter"}:
+            explicit_x = self.settings.authorized_accounts.get("x") or self.settings.authorized_accounts.get("twitter")
             if explicit_x:
                 return explicit_x
+        if platform in {"youtube", "google"}:
+            explicit_yt = self.settings.authorized_accounts.get("youtube") or self.settings.authorized_accounts.get("google")
+            if explicit_yt:
+                return explicit_yt
         # 2. Check platform-specific synced cookie file
         p_file = get_cookie_file_path(platform)
         if p_file.is_file() and p_file.stat().st_size > 50:
             return str(p_file)
+        if platform in {"x", "twitter"}:
+            x_file = get_cookie_file_path("x")
+            if x_file.is_file() and x_file.stat().st_size > 50:
+                return str(x_file)
+        if platform in {"youtube", "google"}:
+            yt_file = get_cookie_file_path("youtube")
+            if yt_file.is_file() and yt_file.stat().st_size > 50:
+                return str(yt_file)
         # 3. Check general browser cookie file
         b_file = get_cookie_file_path("browser")
         if b_file.is_file() and b_file.stat().st_size > 50:
@@ -5646,7 +5433,7 @@ class HQVideoDownloaderApp(ctk.CTk):
         ctk.CTkButton(footer, text="Save changes", width=110, fg_color=BLUE, hover_color=BLUE_HOVER, command=save).pack(side="right")
 
     def _schedule_refresh(self) -> None:
-        self._refresh_job = self.after(200, self._refresh)
+        self._refresh_job = self.after(300, self._refresh)
 
     def _refresh(self) -> None:
         if not self.winfo_exists():

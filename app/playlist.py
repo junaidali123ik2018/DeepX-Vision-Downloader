@@ -350,14 +350,19 @@ def get_remote_image(url: str, size: tuple[int, int] = (220, 130)) -> Image.Imag
         return _THUMBNAIL_CACHE[cache_key]
 
     try:
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-                "Referer": "https://www.tiktok.com/",
-                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-            },
-        )
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        }
+        u_low = url.lower()
+        if "instagram" in u_low or "fbcdn" in u_low:
+            headers["Referer"] = "https://www.instagram.com/"
+        elif "tiktok" in u_low or "byteoversea" in u_low or "ibytedtos" in u_low:
+            headers["Referer"] = "https://www.tiktok.com/"
+        elif "youtube" in u_low or "ytimg" in u_low or "ggpht" in u_low:
+            headers["Referer"] = "https://www.youtube.com/"
+
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=6) as resp:
             data = resp.read()
             img = Image.open(io.BytesIO(data)).convert("RGBA")

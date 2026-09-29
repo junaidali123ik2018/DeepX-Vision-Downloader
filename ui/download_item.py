@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
+import time
 
 import customtkinter as ctk
 from PIL import Image
@@ -50,6 +51,9 @@ class DownloadItem(ctk.CTkFrame):
         self.on_cancel, self.on_retry = on_cancel, on_retry
         self.on_pause, self.on_resume, self.on_context = on_pause, on_resume, on_context
         self._thumb_loaded = False
+        self._last_state: tuple | None = None
+        self._last_thumb_checked: float = 0.0
+        self._last_filename: str = ""
 
         # Thumbnail / Icon container
         self.icon = ctk.CTkLabel(
@@ -166,8 +170,22 @@ class DownloadItem(ctk.CTkFrame):
             progress = self.task.progress
             quality = self.task.quality
 
+        # Fast exit if nothing changed — prevents UI freeze on hundreds of queued items
+        current_state = (status, filename, downloaded, total, speed, error, round(progress, 3), quality)
+        if current_state == self._last_state:
+            if not self._thumb_loaded and self.task.thumbnail_path:
+                now = time.time()
+                if now - self._last_thumb_checked > 3.0:
+                    self._last_thumb_checked = now
+                    self._try_load_thumbnail()
+            return
+        self._last_state = current_state
+
+        if filename != self._last_filename:
+            self._last_filename = filename
+            self.name.configure(text=filename)
+
         self._try_load_thumbnail()
-        self.name.configure(text=filename)
 
         if status == DownloadStatus.DOWNLOADING:
             remaining = (total - downloaded) / speed if total and speed else None
