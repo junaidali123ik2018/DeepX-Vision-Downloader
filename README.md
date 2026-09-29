@@ -22,7 +22,7 @@ A high-performance Windows desktop application for downloading high-quality medi
 ## 📥 Download & Installation
 
 1. Go to the [Releases](https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases) section.
-2. Download the latest installer: **`DeepX_Vision_Downloader_Pro_Setup_v2.5.0.exe`**.
+2. Download the latest installer: **`DeepX_Vision_Downloader_Pro_Setup_v2.5.1.exe`**.
 3. Double-click the setup file to install. The installer will create desktop and start menu shortcuts automatically.
 
 ---
