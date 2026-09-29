@@ -69,21 +69,34 @@ def get_machine_id() -> str:
     return f"DXV-{h[:4]}-{h[4:8]}"
 
 
+def normalize_hwid(raw: str) -> str:
+    """Normalizes Machine ID by stripping hyphens, spaces, and optional 'DXV' prefix."""
+    s = raw.strip().upper().replace("-", "").replace(" ", "")
+    if s.startswith("DXV"):
+        s = s[3:]
+    return s
+
+
 def generate_license_key(tier: str = "LT", target_hwid: str = "ANY") -> str:
     """Generates a cryptographically signed license key."""
     tier = tier.upper()
     if tier not in TIER_DAYS:
         tier = "LT"
-    
-    # Clean HWID to pure alphanumeric
-    clean_hw = target_hwid.replace("-", "").replace(" ", "").upper()
-    hw_tag = clean_hw[:4] if target_hwid.upper() != "ANY" else "ANY0"
-    
+
+    raw_clean = target_hwid.strip().upper().replace("-", "").replace(" ", "")
+    if raw_clean in ("ANY", "ANY0", ""):
+        clean_hw = "ANY"
+        hw_tag = "ANY0"
+    else:
+        canon = normalize_hwid(raw_clean)
+        clean_hw = canon
+        hw_tag = canon[:4] if len(canon) >= 4 else canon.ljust(4, "0")
+
     # 6 random hex chars for uniqueness
     nonce = os.urandom(3).hex().upper()
     payload = f"{tier}:{clean_hw}:{nonce}"
     sig = hmac.new(SECRET_SALT, payload.encode("utf-8"), hashlib.sha256).hexdigest()[:6].upper()
-    
+
     # Key format: DXVP-TIER-HWTAG-NONCE-SIG (exactly 5 parts)
     return f"DXVP-{tier}-{hw_tag}-{nonce}-{sig}"
 
@@ -97,7 +110,7 @@ def verify_license_key(key: str, current_hwid: str) -> tuple[bool, Optional[str]
         return False, None, "Invalid key format."
 
     clean_key = key.strip().upper()
-    parts = clean_key.split("-")
+    parts = [p.strip() for p in clean_key.split("-") if p.strip()]
     if len(parts) != 5 or parts[0] != "DXVP":
         return False, None, "Key must be in format: DXVP-TIER-XXXX-XXXX-XXXX"
 
@@ -105,12 +118,19 @@ def verify_license_key(key: str, current_hwid: str) -> tuple[bool, Optional[str]
     if tier not in TIER_DAYS:
         return False, None, f"Unknown tier '{tier}'."
 
-    clean_cur_hw = current_hwid.replace("-", "").replace(" ", "").upper()
+    if hw_tag in ("ANYO", "ANY0", "ANY"):
+        hw_tag = "ANY0"
 
-    # Verify against ANY or current machine HWID
+    canonical_cur_hw = normalize_hwid(current_hwid)
+    raw_clean_cur_hw = current_hwid.replace("-", "").replace(" ", "").upper()
+
     valid = False
-    for candidate_clean, is_any in [(clean_cur_hw, False), ("ANY", True)]:
-        cand_tag = candidate_clean[:4] if not is_any else "ANY0"
+    candidates = [
+        ("ANY", "ANY0"),
+        (canonical_cur_hw, canonical_cur_hw[:4] if len(canonical_cur_hw) >= 4 else canonical_cur_hw.ljust(4, "0")),
+        (raw_clean_cur_hw, raw_clean_cur_hw[:4] if len(raw_clean_cur_hw) >= 4 else raw_clean_cur_hw.ljust(4, "0")),
+    ]
+    for candidate_clean, cand_tag in candidates:
         if cand_tag == hw_tag:
             payload = f"{tier}:{candidate_clean}:{nonce}"
             expected_sig = hmac.new(SECRET_SALT, payload.encode("utf-8"), hashlib.sha256).hexdigest()[:6].upper()
