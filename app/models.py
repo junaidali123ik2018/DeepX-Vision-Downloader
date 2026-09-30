@@ -11,6 +11,7 @@ class DownloadStatus(str, Enum):
     QUEUED = "Queued"
     FETCHING_INFO = "Analyzing…"
     DOWNLOADING = "Downloading"
+    CONVERTING = "Converting"
     PAUSED = "Paused"
     COMPLETED = "Completed"
     FAILED = "Failed"
@@ -38,6 +39,8 @@ class DownloadTask:
     creator: str = ""
     media_id: str = ""
     platform: str = ""
+    conversion_progress: float = 0.0
+    conversion_stage: str = "Converting…"
     is_duplicate_copy: bool = False
     on_duplicate_prompt: Callable[[str, str, str], bool] | None = field(default=None, repr=False)
     delete_file_on_remove: bool = False
@@ -47,6 +50,10 @@ class DownloadTask:
 
     @property
     def progress(self) -> float:
+        if self.status == DownloadStatus.COMPLETED:
+            return 1.0
+        if self.status == DownloadStatus.CONVERTING:
+            return max(0.0, min(1.0, self.conversion_progress))
         if not self.total:
             return 0.0
         return min(1.0, self.downloaded / self.total)

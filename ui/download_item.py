@@ -120,6 +120,8 @@ class DownloadItem(ctk.CTkFrame):
     def _action(self) -> None:
         if self.task.status == DownloadStatus.DOWNLOADING:
             self.on_pause(self.task)
+        elif self.task.status == DownloadStatus.CONVERTING:
+            self.on_cancel(self.task)
         elif self.task.status == DownloadStatus.PAUSED:
             self.on_resume(self.task)
         elif self.task.status in {DownloadStatus.FAILED, DownloadStatus.CANCELLED}:
@@ -169,9 +171,10 @@ class DownloadItem(ctk.CTkFrame):
             error = self.task.error
             progress = self.task.progress
             quality = self.task.quality
+            stage = getattr(self.task, "conversion_stage", "Converting…")
 
         # Fast exit if nothing changed — prevents UI freeze on hundreds of queued items
-        current_state = (status, filename, downloaded, total, speed, error, round(progress, 3), quality)
+        current_state = (status, filename, downloaded, total, speed, error, round(progress, 3), quality, stage)
         if current_state == self._last_state:
             if not self._thumb_loaded and self.task.thumbnail_path:
                 now = time.time()
@@ -193,6 +196,18 @@ class DownloadItem(ctk.CTkFrame):
             if not self._thumb_loaded:
                 self.icon.configure(text="↓", fg_color=BLUE_BG, text_color=BLUE_FG)
             self.button.configure(text="Pause", state="normal", fg_color=BLUE_BTN, hover_color=BLUE_BTN_HOVER, text_color=BLUE_BTN_TEXT)
+
+        elif status == DownloadStatus.CONVERTING:
+            pct_int = int(round(progress * 100))
+            detail = f"{quality}  •  {stage}  •  {pct_int}%"
+            if not self._thumb_loaded:
+                self.icon.configure(text="⚙", fg_color=("#FEF3C7", "#3B2D14"), text_color=("#D97706", "#F59E0B"))
+            self.button.configure(
+                text="Converting…",
+                state="disabled",
+                fg_color=("#F1F5F9", "#1E293B"),
+                text_color=TEXT_MUTED,
+            )
 
         elif status == DownloadStatus.PAUSED:
             detail = f"{quality}  •  Paused • will continue when resumed"

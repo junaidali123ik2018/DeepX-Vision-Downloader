@@ -5248,7 +5248,7 @@ class HQVideoDownloaderApp(ctk.CTk):
     def _cancel(self, task: DownloadTask) -> None:
         task.cancel_event.set()
         with task.lock:
-            if task.status in {DownloadStatus.QUEUED, DownloadStatus.FETCHING_INFO, DownloadStatus.DOWNLOADING}:
+            if task.status in {DownloadStatus.QUEUED, DownloadStatus.FETCHING_INFO, DownloadStatus.DOWNLOADING, DownloadStatus.CONVERTING}:
                 task.status = DownloadStatus.CANCELLED
 
     def _pause(self, task: DownloadTask) -> None:
@@ -5442,7 +5442,7 @@ class HQVideoDownloaderApp(ctk.CTk):
         for task_id, item in list(self.items.items()):
             item.refresh()
             t = self.tasks[task_id]
-            if t.status == DownloadStatus.DOWNLOADING:
+            if t.status in (DownloadStatus.DOWNLOADING, DownloadStatus.CONVERTING):
                 active += 1
             elif t.status == DownloadStatus.COMPLETED:
                 if not getattr(t, "_telemetry_reported", False):

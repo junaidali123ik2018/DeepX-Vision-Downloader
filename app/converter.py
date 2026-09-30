@@ -47,6 +47,23 @@ def get_video_resolution(filepath: str) -> tuple[int, int] | None:
     return None
 
 
+def get_video_duration(filepath: str) -> float | None:
+    """Extracts duration in seconds of a media file using ffmpeg."""
+    ffmpeg = get_ffmpeg_path()
+    if not ffmpeg:
+        return None
+    try:
+        cmd = [ffmpeg, "-i", filepath]
+        res = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True, errors="replace")
+        match = re.search(r"Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)", res.stderr)
+        if match:
+            h, m, s = float(match.group(1)), float(match.group(2)), float(match.group(3))
+            return h * 3600 + m * 60 + s
+    except Exception:
+        pass
+    return None
+
+
 def convert_media(
     input_path: str,
     output_dir: str,
@@ -195,18 +212,44 @@ def convert_media(
 
     cmd.append(str(output_path))
 
+    total_sec = get_video_duration(str(src))
+    total_us = (total_sec * 1_000_000) if total_sec else None
+
+    # Insert -progress pipe:1 right after -y
+    cmd_with_prog = [cmd[0], "-progress", "pipe:1"] + cmd[1:]
+
     if on_progress:
-        on_progress(0.1, f"Converting to {target_format}...")
+        on_progress(0.05, f"Converting to {target_format}…")
 
     # Run FFmpeg process
     proc = subprocess.Popen(
-        cmd,
+        cmd_with_prog,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         errors="replace",
     )
-    _, stderr = proc.communicate()
+
+    stderr_lines = []
+    def read_stderr():
+        if proc.stderr:
+            for line in proc.stderr:
+                stderr_lines.append(line)
+    err_t = threading.Thread(target=read_stderr, daemon=True)
+    err_t.start()
+
+    if proc.stdout:
+        for line in proc.stdout:
+            if on_progress and total_us:
+                m = re.search(r"out_time_us=(\d+)", line)
+                if m:
+                    us = int(m.group(1))
+                    pct = min(0.99, max(0.05, us / total_us))
+                    on_progress(pct, f"Converting to {target_format} ({int(pct*100)}%)…")
+
+    proc.wait()
+    err_t.join(timeout=1.0)
+    stderr = "".join(stderr_lines)
 
     if proc.returncode != 0:
         err_msg = stderr[-400:] if len(stderr) > 400 else stderr
@@ -218,7 +261,11 @@ def convert_media(
     return str(output_path)
 
 
-def upscale_video_to_resolution(video_path: str, target_height: int) -> str | None:
+def upscale_video_to_resolution(
+    video_path: str,
+    target_height: int,
+    on_progress: Callable[[float, str], None] | None = None,
+) -> str | None:
     """Upscales a video file to the requested resolution if source is smaller."""
     ffmpeg = get_ffmpeg_path()
     if not ffmpeg:
@@ -235,16 +282,43 @@ def upscale_video_to_resolution(video_path: str, target_height: int) -> str | No
     src = Path(video_path)
     temp_out = src.parent / f"{src.stem}_upscaled_{target_height}p{src.suffix}"
 
+    total_sec = get_video_duration(str(src))
+    total_us = (total_sec * 1_000_000) if total_sec else None
+
     cmd = [
-        ffmpeg, "-y", "-i", str(src),
+        ffmpeg, "-y", "-progress", "pipe:1", "-i", str(src),
         "-vf", f"scale=-2:{target_height}:flags=lanczos",
         "-c:v", "libx264", "-crf", "18", "-preset", "fast",
         "-c:a", "copy",
         "-movflags", "+faststart",
-        str(temp_out)
+        str(temp_out),
     ]
-    res_proc = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-    if res_proc.returncode == 0 and temp_out.is_file():
+
+    if on_progress:
+        on_progress(0.05, f"Upscaling to {target_height}p…")
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        errors="replace",
+    )
+
+    if proc.stdout:
+        for line in proc.stdout:
+            if on_progress and total_us:
+                m = re.search(r"out_time_us=(\d+)", line)
+                if m:
+                    us = int(m.group(1))
+                    pct = min(0.99, max(0.05, us / total_us))
+                    on_progress(pct, f"Upscaling to {target_height}p ({int(pct*100)}%)…")
+
+    proc.wait()
+
+    if proc.returncode == 0 and temp_out.is_file():
+        if on_progress:
+            on_progress(1.0, f"Upscaled to {target_height}p!")
         # Replace original with upscaled version
         try:
             src.unlink()

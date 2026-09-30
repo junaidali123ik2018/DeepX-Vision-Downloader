@@ -4,7 +4,7 @@ import queue
 import re
 import shutil
 from pathlib import Path
-from threading import Condition, Thread
+from threading import Condition, Event, Thread
 from typing import Callable
 import urllib.request
 
@@ -242,13 +242,68 @@ class DownloadManager:
                         task.output_path = path
                         task.filename = Path(path).name
 
+        stop_ticker = Event()
+        ticker_thread: Thread | None = None
+
+        def _start_ticker():
+            nonlocal ticker_thread
+            stop_ticker.clear()
+
+            def _ticker():
+                curr = 0.08
+                while not stop_ticker.is_set() and not task.cancel_event.is_set():
+                    if stop_ticker.wait(0.25):
+                        break
+                    if curr < 0.65:
+                        curr += 0.05
+                    elif curr < 0.88:
+                        curr += 0.025
+                    elif curr < 0.97:
+                        curr += 0.008
+                    with task.lock:
+                        if task.status == DownloadStatus.CONVERTING:
+                            task.conversion_progress = min(0.98, curr)
+                    self._notify(task)
+
+            ticker_thread = Thread(target=_ticker, daemon=True)
+            ticker_thread.start()
+
+        def _stop_ticker():
+            stop_ticker.set()
+
         def postprocessor_hook(progress: dict) -> None:
+            status_val = progress.get("status")
+            pp_name = progress.get("postprocessor") or ""
             info = progress.get("info_dict") or {}
             path = info.get("filepath")
             if path:
                 with task.lock:
                     task.output_path = path
                     task.filename = Path(path).name
+
+            if status_val == "started":
+                if "Merger" in pp_name:
+                    stage = "Merging audio & video streams…"
+                elif "Audio" in pp_name or "AUDIO" in task.quality.upper():
+                    stage = "Extracting & converting audio…"
+                elif "Remux" in pp_name or "Convert" in pp_name:
+                    stage = "Converting format to MP4…"
+                else:
+                    stage = "Processing & converting media…"
+
+                with task.lock:
+                    task.status = DownloadStatus.CONVERTING
+                    task.conversion_stage = stage
+                    task.conversion_progress = 0.08
+                    task.speed_bps = 0
+                self._notify(task)
+                _start_ticker()
+            elif status_val == "finished":
+                _stop_ticker()
+                with task.lock:
+                    task.conversion_progress = 1.0
+                    task.conversion_stage = "Conversion complete"
+                self._notify(task)
 
         try:
             ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
@@ -419,20 +474,33 @@ class DownloadManager:
                     try:
                         from app.converter import upscale_video_to_resolution
                         with task.lock:
-                            task.error = f"Converting/Upscaling to {task.quality}..."
+                            task.status = DownloadStatus.CONVERTING
+                            task.conversion_stage = f"Upscaling to {task.quality}…"
+                            task.conversion_progress = 0.05
+                            task.speed_bps = 0
                         self._notify(task)
-                        upscaled = upscale_video_to_resolution(task.output_path, target_h)
+
+                        def on_upscale_progress(pct: float, stage: str):
+                            with task.lock:
+                                task.status = DownloadStatus.CONVERTING
+                                task.conversion_stage = stage
+                                task.conversion_progress = pct
+                            self._notify(task)
+
+                        upscaled = upscale_video_to_resolution(task.output_path, target_h, on_progress=on_upscale_progress)
                         if upscaled:
                             task.output_path = upscaled
                     except Exception:
                         pass
 
+            _stop_ticker()
             if task.delete_file_on_remove and task.output_path:
                 Path(task.output_path).unlink(missing_ok=True)
 
             with task.lock:
                 task.status = DownloadStatus.COMPLETED
                 task.speed_bps = 0
+                task.conversion_progress = 1.0
                 if task.total:
                     task.downloaded = task.total
             self._notify(task)
@@ -453,11 +521,13 @@ class DownloadManager:
             )
 
         except (DownloadCancelled, DownloadPaused):
+            _stop_ticker()
             with task.lock:
                 task.status = DownloadStatus.PAUSED if task.pause_event.is_set() else DownloadStatus.CANCELLED
                 task.speed_bps = 0
             self._notify(task)
         except (yt_dlp.utils.DownloadError, OSError, ValueError) as error:
+            _stop_ticker()
             err_str = str(error)
             # Automatic fallback for TikTok if yt-dlp gets IP-blocked or encounters format issues
             if "tiktok.com" in task.url.lower() or "douyin.com" in task.url.lower():
