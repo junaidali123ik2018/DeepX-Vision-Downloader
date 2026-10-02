@@ -69,7 +69,11 @@ def is_playlist_or_channel(url: str) -> bool:
         return True
     if "youtube.com/@" in u or "youtube.com/channel/" in u or "youtube.com/c/" in u or "youtube.com/user/" in u:
         return True
-    if "tiktok.com/@" in u and "/video/" not in u:
+    if "tiktok.com/@" in u and "/video/" not in u and "/photo/" not in u:
+        return True
+    if "instagram.com/" in u and not any(x in u for x in ["/p/", "/reel/", "/reels/", "/tv/", "/stories/"]):
+        return True
+    if "facebook.com/" in u and ("/videos" in u or "/watch" in u) and "/watch/?v=" not in u:
         return True
     if "vimeo.com/channels/" in u or "vimeo.com/showcase/" in u:
         return True

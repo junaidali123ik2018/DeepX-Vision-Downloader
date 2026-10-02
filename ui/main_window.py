@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import threading
 import time
 from tkinter import Canvas, Menu, TclError, filedialog, messagebox
@@ -1581,6 +1582,10 @@ class HQVideoDownloaderApp(ctk.CTk):
         if not url:
             messagebox.showwarning("Enter URL", "Please enter or paste a valid video or image URL to download.")
             return
+        if is_playlist_or_channel(url):
+            self._open_playlist_dialog(initial_url=url)
+            self.hero_url_var.set("")
+            return
         self._queue_urls([url])
         self._set_downloads_tab("downloading")
         self.hero_url_var.set("")
@@ -1590,6 +1595,10 @@ class HQVideoDownloaderApp(ctk.CTk):
         if not val:
             return
         if "://" in val or val.startswith("www.") or (("." in val) and (" " not in val) and len(val.split(".")) >= 2):
+            if is_playlist_or_channel(val):
+                self._open_playlist_dialog(initial_url=val)
+                self.top_search_var.set("")
+                return
             self._queue_urls([val])
             self.show_page("downloads")
             self._set_downloads_tab("downloading")
@@ -2180,14 +2189,18 @@ class HQVideoDownloaderApp(ctk.CTk):
             return
 
         dest_dir = self.settings.resolved_download_folder()
+        has_mult = len(selected) > 1
         for idx, item in enumerate(selected, 1):
             p, mid, creator, _ = extract_media_identity(item["url"])
             clean_title = sanitize_filename(item.get('title', 'Photo'))
+            clean_base_title = re.sub(r"^\d{1,4}[\.\s_-]+\s*", "", clean_title)
+            final_img_title = f"{idx:02d}. {clean_base_title or clean_title}" if has_mult else clean_title
             task = DownloadTask(
                 url=item["url"],
                 destination=str(dest_dir),
                 quality="Image / Photo",
-                filename=f"{clean_title}.jpg",
+                filename=f"{final_img_title}.jpg",
+                numbering=idx if has_mult else None,
                 creator=creator,
                 media_id=mid,
                 platform=p,
@@ -2870,12 +2883,17 @@ class HQVideoDownloaderApp(ctk.CTk):
             p, mid, c_meta, _ = extract_media_identity(item_url)
             item_creator = creator or c_meta
 
+            # Clean any pre-existing numbering to avoid duplicate prefixes
+            clean_base_title = re.sub(r"^\d{1,4}[\.\s_-]+\s*", "", original_title)
+            numbered_title = f"{num:02d}. {clean_base_title or original_title}"
+
             task = DownloadTask(
                 url=item_url,
                 destination=dest_folder,
                 quality=quality,
                 speed_limit_bps=speed_limit,
-                filename=original_title,
+                filename=numbered_title,
+                numbering=num,
                 cookies_source=cookie_src,
                 creator=item_creator,
                 media_id=mid,
@@ -5210,15 +5228,20 @@ class HQVideoDownloaderApp(ctk.CTk):
         license_mgr.record_downloads(len(items_to_download))
         self._update_pro_badge_ui()
 
-        for url, is_dup in items_to_download:
+        has_multiple = len(items_to_download) > 1
+        for num, (url, is_dup) in enumerate(items_to_download, 1):
             cookie_src = self._get_cookie_source_for_url(url)
             p, mid, creator, _ = extract_media_identity(url)
+            item_numbering = num if has_multiple else None
+            initial_filename = f"{item_numbering:02d}. Analyzing video…" if item_numbering else "Analyzing video…"
             task = DownloadTask(
                 url=url,
                 destination=base_dest,
                 quality=selected_quality,
                 speed_limit_bps=speed_limit,
                 cookies_source=cookie_src,
+                filename=initial_filename,
+                numbering=item_numbering,
                 creator=creator,
                 media_id=mid,
                 platform=p,

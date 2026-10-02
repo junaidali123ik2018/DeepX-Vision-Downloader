@@ -395,7 +395,8 @@ class DownloadManager:
 
                 base_name = sanitize_filename(raw_title or task.filename)
                 if task.numbering is not None:
-                    clean_title = f"{task.numbering:02d}. {base_name}"
+                    base_name_clean = re.sub(r"^\d{1,4}[\.\s_-]+\s*", "", base_name)
+                    clean_title = f"{task.numbering:02d}. {base_name_clean or base_name}"
                 else:
                     clean_title = base_name
 
