@@ -53,7 +53,7 @@ class DownloadItem(ctk.CTkFrame):
         self._thumb_loaded = False
         self._last_state: tuple | None = None
         self._last_thumb_checked: float = 0.0
-        self._last_filename: str = ""
+        self._last_filename: str = task.filename or ""
 
         # Thumbnail / Icon container
         self.icon = ctk.CTkLabel(
@@ -71,7 +71,7 @@ class DownloadItem(ctk.CTkFrame):
         # Title label
         self.name = ctk.CTkLabel(
             self,
-            text="Analyzing video…",
+            text=task.filename or "Analyzing video…",
             text_color=TEXT_PRIMARY,
             font=ctk.CTkFont(size=13, weight="bold"),
             anchor="w",

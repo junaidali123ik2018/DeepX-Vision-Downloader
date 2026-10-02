@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 import customtkinter as ctk
@@ -17,6 +18,7 @@ class VideoCardWidget(ctk.CTkFrame):
         video: dict,
         on_toggle: Callable[[dict, bool], None],
         initial_selected: bool = True,
+        index: int | None = None,
     ) -> None:
         super().__init__(
             parent,
@@ -46,6 +48,20 @@ class VideoCardWidget(ctk.CTkFrame):
         )
         self.thumb_label.place(relx=0.5, rely=0.5, anchor="center")
 
+        # Top-left index badge (e.g. #01, #02...)
+        if index is not None:
+            self.index_badge = ctk.CTkLabel(
+                self.thumb_frame,
+                text=f"#{index:02d}",
+                font=ctk.CTkFont(size=10, weight="bold"),
+                fg_color="#0F2440",
+                text_color="#38BDF8",
+                corner_radius=4,
+                padx=5,
+                pady=1,
+            )
+            self.index_badge.place(relx=0.08, rely=0.08, anchor="nw")
+
         # Top-right checkbox
         self.check_var = ctk.BooleanVar(value=initial_selected)
         self.checkbox = ctk.CTkCheckBox(
@@ -65,7 +81,12 @@ class VideoCardWidget(ctk.CTkFrame):
         self.checkbox.place(relx=0.92, rely=0.08, anchor="ne")
 
         # Title Label
-        title_text = video.get("title") or "Untitled Video"
+        raw_title = video.get("title") or "Untitled Video"
+        clean_title = re.sub(r"^\d{1,4}[\.\s_-]+\s*", "", raw_title)
+        if index is not None:
+            title_text = f"{index:02d}. {clean_title or raw_title}"
+        else:
+            title_text = raw_title
         if len(title_text) > 42:
             title_text = title_text[:39] + "..."
         self.title_label = ctk.CTkLabel(
@@ -142,6 +163,9 @@ class VideoGridModal(ctk.CTkToplevel):
         self.parent_app = parent
         self.title_text = title
         self.videos = videos
+        for i, v in enumerate(self.videos, 1):
+            if "index" not in v:
+                v["index"] = i
         self.on_download_selected = on_download_selected
         self.selected_map: dict[str, bool] = {v.get("url", str(i)): True for i, v in enumerate(videos)}
         self.cards: list[VideoCardWidget] = []
@@ -387,11 +411,13 @@ class VideoGridModal(ctk.CTkToplevel):
             col = idx % columns
             key = video.get("url") or str(id(video))
             is_sel = self.selected_map.get(key, True)
+            v_num = video.get("index", start + idx + 1)
             card = VideoCardWidget(
                 self.scroll,
                 video=video,
                 on_toggle=self._on_card_toggle,
                 initial_selected=is_sel,
+                index=v_num,
             )
             card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
             self.cards.append(card)

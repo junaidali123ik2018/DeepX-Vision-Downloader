@@ -2927,7 +2927,7 @@ class HQVideoDownloaderApp(ctk.CTk):
 
         def worker():
             try:
-                title, entries = fetch_playlist_info(target_url, max_items=0)
+                title, entries = fetch_playlist_info(target_url, max_items=0, mode="all_videos")
                 def on_done():
                     self.channel_hub_status.configure(text="")
                     if not entries:
@@ -2958,7 +2958,7 @@ class HQVideoDownloaderApp(ctk.CTk):
 
         def worker():
             try:
-                title, entries = fetch_playlist_info(target_url, max_items=0)
+                title, entries = fetch_playlist_info(target_url, max_items=0, mode="all_videos")
                 def on_done():
                     self.channel_hub_status.configure(text="")
                     if not entries:
@@ -3364,7 +3364,7 @@ class HQVideoDownloaderApp(ctk.CTk):
 
         def worker():
             try:
-                title, entries = fetch_playlist_info(target_url, max_items=0)
+                title, entries = fetch_playlist_info(target_url, max_items=0, mode="all_videos")
                 def on_done():
                     self.tiktok_hub_status.configure(text="")
                     if not entries:
@@ -3395,7 +3395,7 @@ class HQVideoDownloaderApp(ctk.CTk):
 
         def worker():
             try:
-                title, entries = fetch_playlist_info(target_url, max_items=0)
+                title, entries = fetch_playlist_info(target_url, max_items=0, mode="all_videos")
                 def on_done():
                     self.tiktok_hub_status.configure(text="")
                     if not entries:
@@ -4938,9 +4938,10 @@ class HQVideoDownloaderApp(ctk.CTk):
 
                     dur = f"  ({format_eta(vid['duration'])})" if vid.get("duration") else ""
                     short_flag = "  [⚡ Short]" if is_v_short else ""
+                    clean_v_name = re.sub(r"^\d{1,4}[\.\s_-]+\s*", "", vid.get("title", ""))
                     v_title = ctk.CTkLabel(
                         v_row,
-                        text=f"{v_idx:02d}.  {vid['title']}{dur}{short_flag}",
+                        text=f"{v_idx:02d}.  {clean_v_name or vid.get('title', 'Video')}{dur}{short_flag}",
                         text_color=INK,
                         font=ctk.CTkFont(size=11),
                         anchor="w",
@@ -5157,6 +5158,10 @@ class HQVideoDownloaderApp(ctk.CTk):
         if not valid:
             messagebox.showwarning("No valid links", "Paste one or more public HTTP or HTTPS video URLs.")
             return False
+
+        if len(valid) == 1 and is_playlist_or_channel(valid[0]):
+            self._open_playlist_dialog(initial_url=valid[0])
+            return True
 
         # Enforce Daily Free Trial (5 downloads/day for free users)
         can_dl, reason = license_mgr.can_download(len(valid))

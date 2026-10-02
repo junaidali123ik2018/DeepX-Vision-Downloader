@@ -201,6 +201,15 @@ def fetch_playlist_info(
                 except Exception:
                     pass
 
+            if len(results) > 1:
+                for idx, p in enumerate(results, 1):
+                    raw = p.get("title", "")
+                    clean_raw = re.sub(r"^\d{1,4}[\.\s_-]+\s*", "", raw)
+                    p["title"] = f"{idx:02d}. {clean_raw or raw or 'Video'}"
+                    p["index"] = idx
+            elif len(results) == 1:
+                results[0]["index"] = 1
+
             return title, results
         except Exception as exc:
             if progress_callback:
@@ -235,6 +244,15 @@ def fetch_playlist_info(
                 parsed = _parse_entry(e, default_media_type="video")
                 if parsed:
                     results.append(parsed)
+
+            if len(results) > 1:
+                for idx, p in enumerate(results, 1):
+                    raw = p.get("title", "")
+                    clean_raw = re.sub(r"^\d{1,4}[\.\s_-]+\s*", "", raw)
+                    p["title"] = f"{idx:02d}. {clean_raw or raw or 'Video'}"
+                    p["index"] = idx
+            elif len(results) == 1:
+                results[0]["index"] = 1
 
             return title, results
     except Exception as exc:
