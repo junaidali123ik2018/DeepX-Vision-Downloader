@@ -60,6 +60,10 @@ def detect_platform_from_url(url: str) -> str:
         return "vimeo"
     if "dailymotion.com" in u:
         return "dailymotion"
+    if "moviebox" in u:
+        return "moviebox"
+    if "watch-movies" in u:
+        return "watchmoviespk"
     return "browser"
 
 

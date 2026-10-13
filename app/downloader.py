@@ -23,6 +23,14 @@ from app.path_manager import (
 )
 from app.download_history import DownloadRecord, history_store
 from app.ytdl_utils import apply_ytdl_robust_options, download_tiktok_fallback
+from app.custom_extractors import (
+    apply_custom_patches,
+    is_custom_site_url,
+    resolve_custom_media,
+    download_custom_stream_fallback,
+)
+
+apply_custom_patches()
 
 TaskCallback = Callable[[DownloadTask], None]
 
@@ -369,8 +377,12 @@ class DownloadManager:
             with yt_dlp.YoutubeDL(options) as downloader:
                 # 1. Fetch info and thumbnail first
                 raw_title = ""
+                info = None
                 try:
-                    info = downloader.extract_info(task.url, download=False)
+                    if is_custom_site_url(task.url):
+                        info = resolve_custom_media(task.url, desired_quality=task.quality)
+                    else:
+                        info = downloader.extract_info(task.url, download=False)
                     if info:
                         raw_title = info.get("title", "")
                         platform, mid, creator, _ = extract_media_identity(task.url, info)
@@ -460,7 +472,10 @@ class DownloadManager:
                 with task.lock:
                     task.status = DownloadStatus.DOWNLOADING
                 self._notify(task)
-                downloader.download([task.url])
+                if is_custom_site_url(task.url) and info:
+                    downloader.process_ie_result(info, download=True)
+                else:
+                    downloader.download([task.url])
 
             # Auto-upscale to target resolution if user specified 8K or 4K and source was smaller
             if task.output_path and Path(task.output_path).is_file():
@@ -534,6 +549,14 @@ class DownloadManager:
             if "tiktok.com" in task.url.lower() or "douyin.com" in task.url.lower():
                 try:
                     if download_tiktok_fallback(task, self._notify):
+                        return
+                except Exception:
+                    pass
+
+            # Automatic direct stream fallback for MovieBox and Watch-Movies
+            if is_custom_site_url(task.url):
+                try:
+                    if download_custom_stream_fallback(task, info, self._notify):
                         return
                 except Exception:
                     pass

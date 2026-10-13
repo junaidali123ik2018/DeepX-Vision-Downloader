@@ -162,7 +162,11 @@ def extract_media_identity(url: str, info: dict | None = None) -> tuple[str, str
             or ""
         )
         extractor = (info.get("extractor") or info.get("extractor_key") or "").lower()
-        if "youtube" in extractor:
+        if "moviebox" in extractor:
+            platform = "moviebox"
+        elif "watchmovies" in extractor:
+            platform = "watchmoviespk"
+        elif "youtube" in extractor:
             platform = "youtube"
         elif "tiktok" in extractor:
             platform = "tiktok"
@@ -170,7 +174,7 @@ def extract_media_identity(url: str, info: dict | None = None) -> tuple[str, str
             platform = "instagram"
         elif "facebook" in extractor:
             platform = "facebook"
-        elif "twitter" in extractor or "x" in extractor:
+        elif "twitter" in extractor or extractor in ("x", "x.com") or extractor.startswith("x:"):
             platform = "twitter"
         elif "pinterest" in extractor:
             platform = "pinterest"
@@ -214,6 +218,22 @@ def extract_media_identity(url: str, info: dict | None = None) -> tuple[str, str
                 media_id = media_id or m.group(1)
         elif "facebook.com" in netloc:
             platform = "facebook"
+        elif "moviebox" in netloc:
+            platform = "moviebox"
+            creator = creator or "MovieBox"
+            m = re.search(r"/(?:detailpage|movies)/([^/?#]+)", path)
+            if m:
+                media_id = media_id or m.group(1)
+        elif "watch-movies" in netloc:
+            platform = "watchmoviespk"
+            creator = creator or "Watch-Movies"
+            m = re.search(r"/([^/?#]+-watch-online[^/?#]*)", path)
+            if m:
+                media_id = media_id or m.group(1)
+            else:
+                parts = [p for p in path.split("/") if p]
+                if parts:
+                    media_id = media_id or parts[-1]
 
     if not media_id:
         # Fallback to last non-empty path component
