@@ -234,6 +234,17 @@ def extract_media_identity(url: str, info: dict | None = None) -> tuple[str, str
                 parts = [p for p in path.split("/") if p]
                 if parts:
                     media_id = media_id or parts[-1]
+        elif "videodownloader" in netloc or "omnisave" in netloc:
+            platform = "videodownloader"
+            creator = creator or "OmniSave"
+            qs = parse_qs(parsed.query)
+            q_param = qs.get("q") or qs.get("url")
+            if q_param and q_param[0]:
+                media_id = media_id or q_param[0]
+            else:
+                parts = [p for p in path.split("/") if p]
+                if parts:
+                    media_id = media_id or parts[-1]
 
     if not media_id:
         # Fallback to last non-empty path component

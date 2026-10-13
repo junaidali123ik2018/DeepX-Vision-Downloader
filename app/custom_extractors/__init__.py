@@ -36,6 +36,11 @@ apply_custom_patches()
 
 from app.custom_extractors.moviebox import is_moviebox_url, extract_moviebox
 from app.custom_extractors.watch_movies import is_watch_movies_url, extract_watch_movies
+from app.custom_extractors.videodownloader_site import (
+    is_videodownloader_url,
+    extract_videodownloader,
+    query_seocloud_job,
+)
 
 
 def is_custom_site_url(url: str) -> bool:
@@ -43,7 +48,7 @@ def is_custom_site_url(url: str) -> bool:
     if not url or not isinstance(url, str):
         return False
     u = url.strip()
-    return is_moviebox_url(u) or is_watch_movies_url(u)
+    return is_moviebox_url(u) or is_watch_movies_url(u) or is_videodownloader_url(u)
 
 
 def resolve_custom_media(url: str, desired_quality: str = "Best Available") -> dict | None:
@@ -60,6 +65,8 @@ def resolve_custom_media(url: str, desired_quality: str = "Best Available") -> d
         return extract_moviebox(u, desired_quality=desired_quality)
     if is_watch_movies_url(u):
         return extract_watch_movies(u, desired_quality=desired_quality)
+    if is_videodownloader_url(u):
+        return extract_videodownloader(u, desired_quality=desired_quality)
     return None
 
 
@@ -286,4 +293,30 @@ def download_custom_stream_fallback(
         part_file.unlink(missing_ok=True)
         logger.error("Custom stream download fallback error: %s", e)
         return False
+
+
+def download_seocloud_fallback(
+    task,
+    notify_fn,
+) -> bool:
+    """
+    Cloud scraper fallback for social videos (YouTube, etc.) via api.seocloud.biz
+    when yt-dlp encounters blocking, 403, or extractor errors.
+    """
+    from app.models import DownloadStatus
+
+    with task.lock:
+        task.status = DownloadStatus.FETCHING_INFO
+        task.error = "Attempting cloud scraper fallback..."
+    notify_fn(task)
+
+    try:
+        info = extract_videodownloader(task.url, desired_quality=task.quality)
+        if not info or not info.get("formats"):
+            return False
+        return download_custom_stream_fallback(task, info, notify_fn)
+    except Exception as e:
+        logger.debug("download_seocloud_fallback failed: %s", e)
+        return False
+
 

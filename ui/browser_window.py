@@ -64,6 +64,8 @@ def detect_platform_from_url(url: str) -> str:
         return "moviebox"
     if "watch-movies" in u:
         return "watchmoviespk"
+    if "videodownloader.site" in u or "omnisave" in u:
+        return "videodownloader"
     return "browser"
 
 

@@ -28,6 +28,7 @@ from app.custom_extractors import (
     is_custom_site_url,
     resolve_custom_media,
     download_custom_stream_fallback,
+    download_seocloud_fallback,
 )
 
 apply_custom_patches()
@@ -553,13 +554,20 @@ class DownloadManager:
                 except Exception:
                     pass
 
-            # Automatic direct stream fallback for MovieBox and Watch-Movies
+            # Automatic direct stream fallback for MovieBox, Watch-Movies, and videodownloader.site
             if is_custom_site_url(task.url):
                 try:
                     if download_custom_stream_fallback(task, info, self._notify):
                         return
                 except Exception:
                     pass
+
+            # Automatic cloud scraper fallback via api.seocloud.biz
+            try:
+                if download_seocloud_fallback(task, self._notify):
+                    return
+            except Exception:
+                pass
 
             if "No video formats found" in err_str or "Unsupported URL" in err_str or "ExtractorError" in err_str:
                 try:
