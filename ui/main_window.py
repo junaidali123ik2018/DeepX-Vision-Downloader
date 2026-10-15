@@ -3808,19 +3808,21 @@ class HQVideoDownloaderApp(ctk.CTk):
         grid_box.pack(padx=40, pady=10)
 
         platforms = [
-            ("▶", "YouTube", "https://www.youtube.com", "#EF4444"),
-            ("♪", "TikTok", "https://www.tiktok.com", "#00F2FE"),
-            ("f", "Facebook", "https://www.facebook.com", "#1877F2"),
-            ("📷", "Instagram", "https://www.instagram.com", "#E1306C"),
-            ("𝕏", "X", "https://www.x.com", "#FFFFFF"),
-            ("☁", "SoundCloud", "https://www.soundcloud.com", "#FF5500"),
-            ("👾", "Twitch", "https://www.twitch.tv", "#9146FF"),
-            ("v", "Vimeo", "https://www.vimeo.com", "#1AB7EA"),
-            ("d", "Dailymotion", "https://www.dailymotion.com", "#0066DC"),
-            ("📺", "Bilibili", "https://www.bilibili.com", "#FB7299"),
+            ("plat_youtube.png", "▶", "YouTube", "https://www.youtube.com", "#EF4444"),
+            ("plat_tiktok.png", "♪", "TikTok", "https://www.tiktok.com", "#00F2FE"),
+            ("plat_facebook.png", "f", "Facebook", "https://www.facebook.com", "#1877F2"),
+            ("plat_instagram.png", "📷", "Instagram", "https://www.instagram.com", "#E1306C"),
+            ("plat_x.png", "𝕏", "X", "https://www.x.com", "#FFFFFF"),
+            ("plat_soundcloud.png", "☁", "SoundCloud", "https://www.soundcloud.com", "#FF5500"),
+            ("plat_twitch.png", "👾", "Twitch", "https://www.twitch.tv", "#9146FF"),
+            ("plat_vimeo.png", "v", "Vimeo", "https://www.vimeo.com", "#1AB7EA"),
+            ("plat_dailymotion.png", "d", "Dailymotion", "https://www.dailymotion.com", "#0066DC"),
+            ("plat_bilibili.png", "📺", "Bilibili", "https://www.bilibili.com", "#FB7299"),
         ]
 
-        for idx, (icon, name, site_url, color) in enumerate(platforms):
+        self._platform_icons_cache = []
+
+        for idx, (img_file, fallback_icon, name, site_url, color) in enumerate(platforms):
             row = idx // 5
             col = idx % 5
 
@@ -3836,16 +3838,38 @@ class HQVideoDownloaderApp(ctk.CTk):
             card_frame.grid(row=row, column=col, padx=12, pady=14)
             card_frame.grid_propagate(False)
 
-            icon_box = ctk.CTkLabel(
-                card_frame,
-                text=icon,
-                width=44,
-                height=44,
-                corner_radius=10,
-                fg_color=("#EEF2F6", "#1E293B"),
-                text_color=color,
-                font=ctk.CTkFont(size=22, weight="bold"),
-            )
+            # Load official PNG logo with fallback to icon text
+            logo_ctk_img = None
+            try:
+                p = get_asset_path(f"assets/{img_file}")
+                if os.path.exists(p):
+                    pil_img = Image.open(p).convert("RGBA")
+                    logo_ctk_img = ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=(38, 38))
+                    self._platform_icons_cache.append(logo_ctk_img)
+            except Exception:
+                logo_ctk_img = None
+
+            if logo_ctk_img:
+                icon_box = ctk.CTkLabel(
+                    card_frame,
+                    image=logo_ctk_img,
+                    text="",
+                    width=44,
+                    height=44,
+                    corner_radius=10,
+                    fg_color="transparent",
+                )
+            else:
+                icon_box = ctk.CTkLabel(
+                    card_frame,
+                    text=fallback_icon,
+                    width=44,
+                    height=44,
+                    corner_radius=10,
+                    fg_color=("#EEF2F6", "#1E293B"),
+                    text_color=color,
+                    font=ctk.CTkFont(size=22, weight="bold"),
+                )
             icon_box.place(relx=0.5, y=32, anchor="center")
 
             name_lbl = ctk.CTkLabel(
