@@ -4515,25 +4515,38 @@ class HQVideoDownloaderApp(ctk.CTk):
     def _open_playlist_dialog(self, initial_url: str = "") -> None:
         dialog = ctk.CTkToplevel(self)
         dialog.title("Download Playlist / Channel")
-        dialog.geometry("600x440")
-        dialog.resizable(False, False)
+        dialog.geometry("620x520")
+        dialog.minsize(600, 500)
         dialog.transient(self)
         dialog.grab_set()
         dialog.configure(fg_color=BACKGROUND)
+
+        # Footer pinned to bottom first so buttons are ALWAYS visible
+        footer = ctk.CTkFrame(dialog, fg_color="transparent")
+        footer.pack(fill="x", side="bottom", padx=26, pady=16)
+
+        ctk.CTkButton(footer, text="Cancel", width=80, height=36, fg_color=SECONDARY_BTN, hover_color=SECONDARY_BTN_HOVER, text_color=INK, command=dialog.destroy).pack(side="right", padx=(8, 0))
+
+        analyze_btn = ctk.CTkButton(footer, text="Analyze & Select Videos", width=190, height=36, fg_color=BLUE, hover_color=BLUE_HOVER, font=ctk.CTkFont(size=13, weight="bold"))
+        analyze_btn.pack(side="right")
+
+        # Status label above footer
+        status_label = ctk.CTkLabel(dialog, text="", text_color=MUTED, font=ctk.CTkFont(size=11))
+        status_label.pack(side="bottom", anchor="w", padx=26, pady=(0, 4))
 
         ctk.CTkLabel(
             dialog,
             text="Download Playlist or Channel",
             text_color=INK,
             font=ctk.CTkFont(size=18, weight="bold"),
-        ).pack(anchor="w", padx=26, pady=(20, 2))
+        ).pack(anchor="w", padx=26, pady=(18, 2))
 
         ctk.CTkLabel(
             dialog,
             text="Select download mode, paste a link, and choose which videos to download.",
             text_color=MUTED,
             font=ctk.CTkFont(size=12),
-        ).pack(anchor="w", padx=26, pady=(0, 14))
+        ).pack(anchor="w", padx=26, pady=(0, 12))
 
         card = ctk.CTkFrame(dialog, corner_radius=12, fg_color=SURFACE, border_width=1, border_color=BORDER)
         card.pack(fill="x", padx=26)
@@ -4597,7 +4610,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             font=ctk.CTkFont(size=11),
             anchor="w",
             justify="left",
-            wraplength=500,
+            wraplength=520,
         )
         mode_desc_lbl.grid(row=4, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 10))
         _update_mode_description(start_mode)
@@ -4618,35 +4631,17 @@ class HQVideoDownloaderApp(ctk.CTk):
 
         ctk.CTkButton(card, text="Paste", width=65, height=34, fg_color=SECONDARY_BTN, hover_color=SECONDARY_BTN_HOVER, text_color=BLUE, command=paste_clipboard).grid(row=1, column=1, padx=(0, 16), pady=(0, 10))
 
-        # Max items dropdown
-        # Max items dropdown
-        limit_box = ctk.CTkFrame(card, fg_color="transparent")
-        limit_box.grid(row=5, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 10))
+        # Max items & Order on one sleek row
+        options_row = ctk.CTkFrame(card, fg_color="transparent")
+        options_row.grid(row=5, column=0, columnspan=2, sticky="ew", padx=16, pady=(2, 16))
 
-        ctk.CTkLabel(limit_box, text="Max items to fetch:", text_color=INK, font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(options_row, text="Max items:", text_color=INK, font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=(0, 6))
         limit_var = ctk.StringVar(value="100 items")
-        ctk.CTkOptionMenu(limit_box, values=["50 items", "100 items", "250 items", "500 items", "All items"], variable=limit_var, width=120).pack(side="left")
+        ctk.CTkOptionMenu(options_row, values=["50 items", "100 items", "250 items", "500 items", "All items"], variable=limit_var, width=110).pack(side="left", padx=(0, 16))
 
-        # Numbering order dropdown
-        order_box = ctk.CTkFrame(card, fg_color="transparent")
-        order_box.grid(row=6, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 16))
-
-        ctk.CTkLabel(order_box, text="Numbering Order:", text_color=INK, font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(options_row, text="Order:", text_color=INK, font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=(0, 6))
         order_var = ctk.StringVar(value="Latest to Oldest (01=Latest)")
-        ctk.CTkOptionMenu(order_box, values=["Latest to Oldest (01=Latest)", "Oldest to Latest (01=Oldest)"], variable=order_var, width=220).pack(side="left")
-
-        # Status label
-        status_label = ctk.CTkLabel(dialog, text="", text_color=MUTED, font=ctk.CTkFont(size=11))
-        status_label.pack(anchor="w", padx=26, pady=(8, 0))
-
-        # Footer
-        footer = ctk.CTkFrame(dialog, fg_color="transparent")
-        footer.pack(fill="x", side="bottom", padx=26, pady=16)
-
-        ctk.CTkButton(footer, text="Cancel", width=80, fg_color=SECONDARY_BTN, hover_color=SECONDARY_BTN_HOVER, text_color=INK, command=dialog.destroy).pack(side="right", padx=(8, 0))
-
-        analyze_btn = ctk.CTkButton(footer, text="Analyze & Select Videos", width=175, fg_color=BLUE, hover_color=BLUE_HOVER, font=ctk.CTkFont(size=13, weight="bold"))
-        analyze_btn.pack(side="right")
+        ctk.CTkOptionMenu(options_row, values=["Latest to Oldest (01=Latest)", "Oldest to Latest (01=Oldest)"], variable=order_var, width=210).pack(side="left")
 
         def start_analysis():
             raw_url = url_var.get().strip()
