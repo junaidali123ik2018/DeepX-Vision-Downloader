@@ -1,5 +1,24 @@
 import ctypes
 import sys
+import customtkinter as ctk
+
+# Globally enforce "Times New Roman" font family across all CustomTkinter components
+if not getattr(ctk.CTkFont, "_is_times_new_roman_patched", False):
+    _orig_ctkfont_init = ctk.CTkFont.__init__
+
+    def _times_new_roman_font_init(self, *args, **kwargs):
+        kwargs["family"] = "Times New Roman"
+        return _orig_ctkfont_init(self, *args, **kwargs)
+
+    ctk.CTkFont.__init__ = _times_new_roman_font_init
+    ctk.CTkFont._is_times_new_roman_patched = True
+
+try:
+    from customtkinter import ThemeManager
+    ThemeManager.theme["CTkFont"]["family"] = "Times New Roman"
+except Exception:
+    pass
+
 from app.settings import SettingsStore
 from ui.main_window import DeepXVisionApp, HQVideoDownloaderApp
 

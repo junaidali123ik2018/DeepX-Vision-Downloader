@@ -11,6 +11,24 @@ from urllib.parse import urlparse
 import customtkinter as ctk
 from PIL import Image
 
+# Globally enforce "Times New Roman" font family across all CustomTkinter components
+if not getattr(ctk.CTkFont, "_is_times_new_roman_patched", False):
+    _orig_ctkfont_init = ctk.CTkFont.__init__
+
+    def _times_new_roman_font_init(self, *args, **kwargs):
+        kwargs["family"] = "Times New Roman"
+        return _orig_ctkfont_init(self, *args, **kwargs)
+
+    ctk.CTkFont.__init__ = _times_new_roman_font_init
+    ctk.CTkFont._is_times_new_roman_patched = True
+
+try:
+    from customtkinter import ThemeManager
+    ThemeManager.theme["CTkFont"]["family"] = "Times New Roman"
+except Exception:
+    pass
+
+
 from app.converter import convert_media
 from app.downloader import DownloadManager
 from app.models import DownloadStatus, DownloadTask
@@ -91,6 +109,34 @@ class HQVideoDownloaderApp(ctk.CTk):
         super().__init__()
         ctk.set_appearance_mode(settings.appearance_mode.lower())
         ctk.set_default_color_theme("blue")
+        try:
+            from customtkinter import ThemeManager
+            ThemeManager.theme["CTkFont"]["family"] = "Times New Roman"
+        except Exception:
+            pass
+
+        import tkinter.font as tkfont
+        for font_name in (
+            "TkDefaultFont",
+            "TkTextFont",
+            "TkFixedFont",
+            "TkMenuFont",
+            "TkHeadingFont",
+            "TkCaptionFont",
+            "TkSmallCaptionFont",
+            "TkIconFont",
+            "TkTooltipFont",
+        ):
+            try:
+                tkfont.nametofont(font_name).configure(family="Times New Roman")
+            except Exception:
+                pass
+
+        try:
+            self.option_add("*Font", "{Times New Roman} 11")
+        except Exception:
+            pass
+
         self.settings, self.store = settings, SettingsStore()
         self.tasks: dict[str, DownloadTask] = {}
         self.items: dict[str, DownloadItem] = {}
@@ -468,7 +514,56 @@ class HQVideoDownloaderApp(ctk.CTk):
         self.dashboard_page = ctk.CTkScrollableFrame(self.content, fg_color="transparent")
         self.dashboard_page.grid_columnconfigure(0, weight=1)
 
-        # 1. Hero Downloader Banner
+        # 1. Total Video / Metrics Row (Top)
+        self.metrics_container = ctk.CTkFrame(self.dashboard_page, fg_color="transparent")
+        self.metrics_container.pack(fill="x", padx=16, pady=(16, 12))
+        self.metrics_container.grid_columnconfigure((0, 1, 2, 3), weight=1, uniform="metric_cols")
+
+        self.lbl_metric_total = self._create_metric_card(
+            parent=self.metrics_container,
+            col=0,
+            title="Total Downloads",
+            initial_val="0",
+            trend="↑ 12% this week",
+            color="#38BDF8",
+            icon_char="↓",
+            spark_points=[(5, 22), (18, 18), (30, 21), (42, 12), (54, 15), (65, 6)],
+        )
+
+        self.lbl_metric_images = self._create_metric_card(
+            parent=self.metrics_container,
+            col=1,
+            title="Images Downloaded",
+            initial_val="0",
+            trend="↑ 28% this week",
+            color="#10B981",
+            icon_char="🖼",
+            spark_points=[(5, 24), (16, 20), (28, 14), (40, 16), (52, 10), (65, 5)],
+        )
+
+        self.lbl_metric_audio = self._create_metric_card(
+            parent=self.metrics_container,
+            col=2,
+            title="Audio Converted",
+            initial_val="0",
+            trend="↑ 5% this week",
+            color="#818CF8",
+            icon_char="🎵",
+            spark_points=[(5, 18), (18, 22), (32, 16), (44, 18), (56, 12), (65, 8)],
+        )
+
+        self.lbl_metric_video = self._create_metric_card(
+            parent=self.metrics_container,
+            col=3,
+            title="Videos Converted",
+            initial_val="0",
+            trend="↑ 18% this week",
+            color="#F59E0B",
+            icon_char="🎬",
+            spark_points=[(5, 25), (18, 19), (30, 15), (42, 17), (55, 9), (65, 4)],
+        )
+
+        # 2. Hero Downloader Banner (Below Metrics)
         hero = ctk.CTkFrame(
             self.dashboard_page,
             corner_radius=16,
@@ -476,43 +571,28 @@ class HQVideoDownloaderApp(ctk.CTk):
             border_width=1,
             border_color=BORDER,
         )
-        hero.pack(fill="x", padx=16, pady=(12, 12))
-        hero.grid_columnconfigure(0, weight=7)
-        hero.grid_columnconfigure(1, weight=3)
-
-        hero_left = ctk.CTkFrame(hero, fg_color="transparent")
-        hero_left.grid(row=0, column=0, sticky="nsew", padx=(20, 10), pady=16)
-
-        # Micro-badge
-        badge_frame = ctk.CTkFrame(hero_left, fg_color=("#E0F2FE", "#1E293B"), corner_radius=6)
-        badge_frame.pack(anchor="w", pady=(0, 6))
-        ctk.CTkLabel(
-            badge_frame,
-            text="⚡ FAST • SECURE • HIGH QUALITY",
-            text_color=BLUE,
-            font=ctk.CTkFont(size=10, weight="bold"),
-        ).pack(padx=8, pady=3)
+        hero.pack(fill="x", padx=16, pady=(0, 16))
 
         # Heading: "Download Anything from the Web"
-        heading_box = ctk.CTkFrame(hero_left, fg_color="transparent")
-        heading_box.pack(anchor="w", pady=(0, 4))
+        heading_box = ctk.CTkFrame(hero, fg_color="transparent")
+        heading_box.pack(anchor="w", padx=20, pady=(18, 4))
         ctk.CTkLabel(heading_box, text="Download ", text_color=INK, font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
         ctk.CTkLabel(heading_box, text="Anything ", text_color=BLUE, font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
         ctk.CTkLabel(heading_box, text="from the Web", text_color=INK, font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
 
         # Subtitle
         ctk.CTkLabel(
-            hero_left,
+            hero,
             text="Paste any video, playlist, image, or audio link from YouTube, TikTok, Instagram, X and 1000+ sites.",
             text_color=MUTED,
             font=ctk.CTkFont(size=12),
-        ).pack(anchor="w", pady=(0, 12))
+        ).pack(anchor="w", padx=20, pady=(0, 14))
 
         # Main Hero Input Bar
-        input_card = ctk.CTkFrame(hero_left, corner_radius=10, fg_color=("#F1F5F9", "#131D30"), border_width=1, border_color=BORDER)
-        input_card.pack(fill="x", pady=(0, 10))
+        input_card = ctk.CTkFrame(hero, corner_radius=10, fg_color=("#F1F5F9", "#131D30"), border_width=1, border_color=BORDER)
+        input_card.pack(fill="x", padx=20, pady=(0, 12))
 
-        ctk.CTkLabel(input_card, text="🔗", font=ctk.CTkFont(size=14), text_color=BLUE).pack(side="left", padx=(10, 4))
+        ctk.CTkLabel(input_card, text="🔗", font=ctk.CTkFont(size=14), text_color=BLUE).pack(side="left", padx=(12, 6))
 
         self.dash_url_var = ctk.StringVar()
         self.dash_url_entry = ctk.CTkEntry(
@@ -528,7 +608,7 @@ class HQVideoDownloaderApp(ctk.CTk):
         self.dash_url_entry.pack(side="left", fill="x", expand=True, padx=4)
         self.dash_url_entry.bind("<Return>", lambda _: self._on_dash_download())
 
-        # Paste split button (📋 Paste Link ⌄)
+        # Paste split button (📋 Paste ⌄)
         paste_grp = ctk.CTkFrame(input_card, fg_color="transparent")
         paste_grp.pack(side="left", padx=(2, 4))
 
@@ -603,11 +683,11 @@ class HQVideoDownloaderApp(ctk.CTk):
             text_color="#FFFFFF",
             font=ctk.CTkFont(size=12, weight="bold"),
             command=self._on_dash_download,
-        ).pack(side="left", padx=(2, 6))
+        ).pack(side="left", padx=(2, 8))
 
         # Hero Secondary Controls Toolbar
-        ctrl_bar = ctk.CTkFrame(hero_left, fg_color="transparent")
-        ctrl_bar.pack(fill="x", pady=(0, 10))
+        ctrl_bar = ctk.CTkFrame(hero, fg_color="transparent")
+        ctrl_bar.pack(fill="x", padx=20, pady=(0, 18))
 
         ctk.CTkButton(
             ctrl_bar,
@@ -629,20 +709,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             font=ctk.CTkFont(size=11),
             anchor="w",
         )
-        self.dash_folder_label.pack(side="left", fill="x", expand=True, padx=(0, 6))
-
-        ctk.CTkButton(
-            ctrl_bar,
-            text="📁 Browse",
-            width=70,
-            height=26,
-            corner_radius=6,
-            fg_color=SECONDARY_BTN,
-            hover_color=SECONDARY_BTN_HOVER,
-            text_color=INK,
-            font=ctk.CTkFont(size=11),
-            command=self._choose_folder,
-        ).pack(side="left", padx=(0, 6))
+        self.dash_folder_label.pack(side="left", fill="x", expand=True, padx=(0, 10))
 
         ctk.CTkButton(
             ctrl_bar,
@@ -655,336 +722,20 @@ class HQVideoDownloaderApp(ctk.CTk):
             text_color=INK,
             font=ctk.CTkFont(size=11),
             command=self._open_download_settings_modal,
-        ).pack(side="left")
-
-        # 10 Platform Quick Chips
-        chips_frame = ctk.CTkFrame(hero_left, fg_color="transparent")
-        chips_frame.pack(fill="x")
-
-        chips = [
-            ("All", "all"),
-            ("YouTube", "youtube"),
-            ("TikTok", "tiktok"),
-            ("Instagram", "instagram"),
-            ("Facebook", "facebook"),
-            ("X / Twitter", "x"),
-            ("Vimeo", "vimeo"),
-            ("SoundCloud", "soundcloud"),
-            ("Reddit", "reddit"),
-            ("Pinterest", "pinterest"),
-        ]
-        for label, pkey in chips:
-            def on_chip(k=pkey):
-                if k == "all":
-                    self.dash_url_entry.focus_set()
-                elif k == "youtube":
-                    self.show_page("channel_hub")
-                elif k == "tiktok":
-                    self.show_page("tiktok_hub")
-                elif k == "instagram":
-                    self.show_page("ig_hub")
-                elif k == "x":
-                    self.show_page("x_hub")
-                elif k in {"facebook", "vimeo", "soundcloud", "reddit", "pinterest"}:
-                    self.show_page("sites")
-
-            ctk.CTkButton(
-                chips_frame,
-                text=label,
-                height=22,
-                corner_radius=11,
-                fg_color=("#1E293B", "#1E293B"),
-                hover_color="#2563EB",
-                text_color="#CBD5E1",
-                font=ctk.CTkFont(size=10, weight="bold"),
-                command=on_chip,
-            ).pack(side="left", padx=(0, 4), pady=2)
-
-        # Hero Right (Doodle / Artwork)
-        hero_right = ctk.CTkFrame(hero, fg_color="transparent")
-        hero_right.grid(row=0, column=1, sticky="nsew", padx=(0, 16), pady=16)
-
-        doodle_path = get_asset_path("assets/hero_doodle.png")
-        if doodle_path.is_file():
-            try:
-                doodle_img = Image.open(doodle_path)
-                ctk_doodle = ctk.CTkImage(light_image=doodle_img, dark_image=doodle_img, size=(150, 90))
-                ctk.CTkLabel(hero_right, text="", image=ctk_doodle).pack(pady=(0, 4))
-            except Exception:
-                pass
-
-        ctk.CTkLabel(
-            hero_right,
-            text="One link. Endless possibilities.",
-            text_color="#38BDF8",
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).pack()
-
-        ctk.CTkLabel(
-            hero_right,
-            text="High-Speed Multi-Thread Engine",
-            text_color="#94A3B8",
-            font=ctk.CTkFont(size=10),
-        ).pack(pady=(2, 0))
-
-        # 2. Dynamic Metric Cards
-        self.metrics_container = ctk.CTkFrame(self.dashboard_page, fg_color="transparent")
-        self.metrics_container.pack(fill="x", padx=16, pady=(0, 14))
-        self.metrics_container.grid_columnconfigure((0, 1, 2, 3), weight=1, uniform="metric_cols")
-
-        self.lbl_metric_total = self._create_metric_card(
-            parent=self.metrics_container,
-            col=0,
-            title="Total Downloads",
-            initial_val="0",
-            trend="↑ 12% this week",
-            color="#38BDF8",
-            icon_char="↓",
-            spark_points=[(5, 22), (18, 18), (30, 21), (42, 12), (54, 15), (65, 6)],
-        )
-
-        self.lbl_metric_images = self._create_metric_card(
-            parent=self.metrics_container,
-            col=1,
-            title="Images Downloaded",
-            initial_val="0",
-            trend="↑ 28% this week",
-            color="#10B981",
-            icon_char="🖼",
-            spark_points=[(5, 24), (16, 20), (28, 14), (40, 16), (52, 10), (65, 5)],
-        )
-
-        self.lbl_metric_audio = self._create_metric_card(
-            parent=self.metrics_container,
-            col=2,
-            title="Audio Converted",
-            initial_val="0",
-            trend="↑ 5% this week",
-            color="#818CF8",
-            icon_char="🎵",
-            spark_points=[(5, 18), (18, 22), (32, 16), (44, 18), (56, 12), (65, 8)],
-        )
-
-        self.lbl_metric_video = self._create_metric_card(
-            parent=self.metrics_container,
-            col=3,
-            title="Videos Converted",
-            initial_val="0",
-            trend="↑ 18% this week",
-            color="#F59E0B",
-            icon_char="🎬",
-            spark_points=[(5, 25), (18, 19), (30, 15), (42, 17), (55, 9), (65, 4)],
-        )
-
-        # 3. Recent Downloads Card
-        recent_card = ctk.CTkFrame(self.dashboard_page, corner_radius=14, fg_color=SURFACE, border_width=1, border_color=BORDER)
-        recent_card.pack(fill="x", padx=16, pady=(0, 14))
-
-        recent_header = ctk.CTkFrame(recent_card, fg_color="transparent")
-        recent_header.pack(fill="x", padx=14, pady=(12, 6))
-
-        ctk.CTkLabel(
-            recent_header,
-            text="Recent Downloads",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=INK,
-        ).pack(side="left")
+        ).pack(side="right")
 
         ctk.CTkButton(
-            recent_header,
-            text="View All In General ➔",
+            ctrl_bar,
+            text="📁 Browse",
+            width=70,
             height=26,
             corner_radius=6,
             fg_color=SECONDARY_BTN,
             hover_color=SECONDARY_BTN_HOVER,
-            text_color=BLUE,
-            font=ctk.CTkFont(size=11, weight="bold"),
-            command=lambda: self.show_page("downloads"),
-        ).pack(side="right")
-
-        self.dash_recent_list_frame = ctk.CTkFrame(recent_card, fg_color="transparent")
-        self.dash_recent_list_frame.pack(fill="x", padx=12, pady=(0, 10))
-
-        self.dash_empty_state = ctk.CTkFrame(recent_card, fg_color="transparent")
-        ctk.CTkLabel(
-            self.dash_empty_state,
-            text="No completed downloads yet. Enter a link above to begin!",
-            text_color=MUTED,
-            font=ctk.CTkFont(size=12),
-        ).pack(pady=18)
-
-        # 4. Features Row (Auto-save Status + Quick Tools) (2 Columns)
-        sections_row = ctk.CTkFrame(self.dashboard_page, fg_color="transparent")
-        sections_row.pack(fill="x", padx=16, pady=(0, 14))
-        sections_row.grid_columnconfigure((0, 1), weight=1, uniform="section_cols")
-
-        # --- Col 0: Auto-save Status ---
-        autosave_card = ctk.CTkFrame(sections_row, corner_radius=14, fg_color=SURFACE, border_width=1, border_color=BORDER)
-        autosave_card.grid(row=0, column=0, sticky="nsew", padx=(0, 7), pady=2)
-
-        autosave_header = ctk.CTkFrame(autosave_card, fg_color="transparent")
-        autosave_header.pack(fill="x", padx=14, pady=(12, 8))
-
-        ctk.CTkLabel(
-            autosave_header,
-            text="Auto-save Status",
-            font=ctk.CTkFont(size=14, weight="bold"),
             text_color=INK,
-        ).pack(side="left")
-
-        active_badge = ctk.CTkFrame(autosave_header, fg_color=("#DCFCE7", "#064E3B"), corner_radius=6)
-        active_badge.pack(side="right")
-        ctk.CTkLabel(
-            active_badge,
-            text="● Active",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            text_color="#10B981",
-        ).pack(padx=8, pady=2)
-
-        switches_data = [
-            ("▶", "#EF4444", "YouTube Auto-save", "Auto-download from subscribed creators", "switch_yt_autosave"),
-            ("♪", "#00F2FE", "TikTok Auto-save", "Auto-grab trending & creator feeds", "switch_tiktok_autosave"),
-            ("📷", "#E1306C", "Instagram Auto-save", "Save reels, posts & stories automatically", "switch_ig_autosave"),
-            ("𝕏", "#FFFFFF", "X (Twitter) Auto-save", "Instant media capture from bookmarks", "switch_x_autosave"),
-        ]
-
-        for icon, col, title, sub, attr_name in switches_data:
-            s_row = ctk.CTkFrame(autosave_card, corner_radius=8, fg_color=("#F8FAFC", "#0F172A"), border_width=1, border_color=BORDER)
-            s_row.pack(fill="x", padx=12, pady=3)
-
-            ctk.CTkLabel(
-                s_row,
-                text=icon,
-                width=28,
-                height=28,
-                corner_radius=6,
-                fg_color=("#EEF2F6", "#1E293B"),
-                text_color=col,
-                font=ctk.CTkFont(size=13, weight="bold"),
-            ).pack(side="left", padx=(8, 8), pady=6)
-
-            text_sub = ctk.CTkFrame(s_row, fg_color="transparent")
-            text_sub.pack(side="left", fill="x", expand=True, pady=3)
-
-            ctk.CTkLabel(text_sub, text=title, font=ctk.CTkFont(size=11, weight="bold"), text_color=INK, anchor="w").pack(anchor="w")
-            ctk.CTkLabel(text_sub, text=sub, font=ctk.CTkFont(size=9), text_color=MUTED, anchor="w").pack(anchor="w")
-
-            sw = ctk.CTkSwitch(s_row, text="", width=40, height=22, progress_color="#2563EB")
-            sw.select()
-            sw.pack(side="right", padx=(4, 8), pady=6)
-            setattr(self, attr_name, sw)
-
-        ctk.CTkButton(
-            autosave_card,
-            text="⚙ Manage Auto-save Settings ➔",
-            height=28,
-            corner_radius=6,
-            fg_color="transparent",
-            hover_color=SECONDARY_BTN_HOVER,
-            text_color=BLUE,
-            font=ctk.CTkFont(size=11, weight="bold"),
-            command=lambda: self._open_settings_dialog("accounts"),
-        ).pack(fill="x", padx=12, pady=(4, 8))
-
-        # --- Col 1: Quick Tools Grid ---
-        tools_card = ctk.CTkFrame(sections_row, corner_radius=14, fg_color=SURFACE, border_width=1, border_color=BORDER)
-        tools_card.grid(row=0, column=1, sticky="nsew", padx=(7, 0), pady=2)
-
-        tools_header = ctk.CTkFrame(tools_card, fg_color="transparent")
-        tools_header.pack(fill="x", padx=14, pady=(12, 8))
-
-        ctk.CTkLabel(
-            tools_header,
-            text="Quick Tools",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color=INK,
-        ).pack(side="left")
-
-        tools_grid = ctk.CTkFrame(tools_card, fg_color="transparent")
-        tools_grid.pack(fill="both", expand=True, padx=12, pady=(0, 10))
-        tools_grid.grid_columnconfigure((0, 1), weight=1, uniform="tool_cols")
-
-        tools_list = [
-            ("⇄", "#818CF8", "Video to MP3", "Extract Audio", lambda: self.show_page("converter")),
-            ("🎬", "#F59E0B", "Video Converter", "Change Formats", lambda: self.show_page("converter")),
-            ("🖼", "#10B981", "Image Downloader", "Bulk Photos", lambda: self.show_page("image_downloader")),
-            ("⇊", "#38BDF8", "Batch Download", "Multiple URLs", self._go_to_downloads),
-            ("🔍", "#00F2FE", "Profile Explorer", "Full Channels", lambda: self.show_page("channel_hub")),
-            ("🌐", "#6366F1", "More Platforms", "1000+ Sites", lambda: self.show_page("sites")),
-        ]
-
-        for idx, (t_icon, t_col, t_title, t_sub, t_cmd) in enumerate(tools_list):
-            t_row = idx // 2
-            t_col_idx = idx % 2
-
-            tile = ctk.CTkFrame(tools_grid, corner_radius=10, fg_color=("#F8FAFC", "#0F172A"), border_width=1, border_color=BORDER)
-            tile.grid(row=t_row, column=t_col_idx, padx=3, pady=3, sticky="nsew")
-
-            icon_l = ctk.CTkLabel(
-                tile,
-                text=t_icon,
-                width=28,
-                height=28,
-                corner_radius=8,
-                fg_color=("#EEF2F6", "#1E293B"),
-                text_color=t_col,
-                font=ctk.CTkFont(size=13, weight="bold"),
-            )
-            icon_l.pack(anchor="w", padx=8, pady=(6, 2))
-
-            ctk.CTkLabel(tile, text=t_title, font=ctk.CTkFont(size=11, weight="bold"), text_color=INK, anchor="w").pack(fill="x", padx=8)
-            ctk.CTkLabel(tile, text=t_sub, font=ctk.CTkFont(size=9), text_color=MUTED, anchor="w").pack(fill="x", padx=8, pady=(0, 6))
-
-            self._bind_clickable_card(tile, t_cmd)
-
-        # 5. Bottom Platforms Banner
-        bottom_banner = ctk.CTkFrame(self.dashboard_page, corner_radius=14, fg_color=SURFACE, border_width=1, border_color=BORDER)
-        bottom_banner.pack(fill="x", padx=16, pady=(0, 16))
-
-        banner_left = ctk.CTkFrame(bottom_banner, fg_color="transparent")
-        banner_left.pack(side="left", fill="x", expand=True, padx=14, pady=10)
-
-        ctk.CTkLabel(
-            banner_left,
-            text="Supported on 10+ Platforms",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color=INK,
-        ).pack(side="left", padx=(0, 12))
-
-        platforms_chips = [
-            ("▶ YouTube", "#EF4444"),
-            ("♪ TikTok", "#00F2FE"),
-            ("📷 Instagram", "#E1306C"),
-            ("f Facebook", "#1877F2"),
-            ("𝕏 X", "#FFFFFF"),
-            ("☁ SoundCloud", "#FF5500"),
-            ("v Vimeo", "#1AB7EA"),
-            ("👾 Twitch", "#9146FF"),
-            ("🔴 Reddit", "#FF4500"),
-            ("📌 Pinterest", "#BD081C"),
-        ]
-
-        for p_label, p_col in platforms_chips:
-            pill = ctk.CTkFrame(banner_left, corner_radius=10, fg_color=("#EEF2F6", "#1E293B"), border_width=1, border_color=BORDER)
-            pill.pack(side="left", padx=3, pady=2)
-            ctk.CTkLabel(
-                pill,
-                text=p_label,
-                font=ctk.CTkFont(size=10, weight="bold"),
-                text_color=p_col,
-            ).pack(padx=7, pady=2)
-
-        ctk.CTkButton(
-            bottom_banner,
-            text="See All Platforms ➔",
-            height=32,
-            corner_radius=8,
-            fg_color=SECONDARY_BTN,
-            hover_color=SECONDARY_BTN_HOVER,
-            text_color=BLUE,
-            font=ctk.CTkFont(size=11, weight="bold"),
-            command=lambda: self.show_page("sites"),
-        ).pack(side="right", padx=14, pady=10)
+            font=ctk.CTkFont(size=11),
+            command=self._choose_folder,
+        ).pack(side="right", padx=(0, 8))
 
         self._update_folder_label()
 

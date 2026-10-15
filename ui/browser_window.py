@@ -294,7 +294,7 @@ def _build_injection_script() -> str:
                         z-index: 2147483645 !important;
                         background: #2563EB !important;
                         color: #FFFFFF !important;
-                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+                        font-family: "Times New Roman", serif !important;
                         font-size: 11px !important;
                         font-weight: 700 !important;
                         padding: 5px 10px !important;
@@ -335,7 +335,7 @@ def _build_injection_script() -> str:
             bar.style.alignItems = 'center';
             bar.style.padding = '0 12px';
             bar.style.gap = '8px';
-            bar.style.fontFamily = 'Segoe UI, -apple-system, sans-serif';
+            bar.style.fontFamily = "'Times New Roman', serif";
             bar.style.boxSizing = 'border-box';
 
             function makeBtn(text, title, onClick, isPrimary) {
@@ -480,7 +480,7 @@ def _build_injection_script() -> str:
             floatBtn.style.borderRadius = '24px';
             floatBtn.style.fontSize = '14px';
             floatBtn.style.fontWeight = 'bold';
-            floatBtn.style.fontFamily = 'Segoe UI, -apple-system, sans-serif';
+            floatBtn.style.fontFamily = "'Times New Roman', serif";
             floatBtn.style.boxShadow = '0 8px 24px rgba(37, 99, 235, 0.45)';
             floatBtn.style.cursor = 'pointer';
             floatBtn.style.userSelect = 'none';
