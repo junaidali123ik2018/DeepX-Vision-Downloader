@@ -167,6 +167,23 @@ class SettingsDialog(ctk.CTkToplevel):
             button_color="#3B82F6",
         ).pack(side="right")
 
+        # Appearance Mode (Dark / Light / System)
+        theme_row = ctk.CTkFrame(card, fg_color="transparent")
+        theme_row.pack(fill="x", padx=16, pady=(0, 12))
+        ctk.CTkLabel(theme_row, text="Appearance Mode", text_color="#F8FAFC", font=ctk.CTkFont(size=13, weight="bold")).pack(
+            side="left"
+        )
+        self.theme_var = ctk.StringVar(value=self.settings.appearance_mode.title())
+        ctk.CTkOptionMenu(
+            theme_row,
+            values=["Dark", "Light", "System"],
+            variable=self.theme_var,
+            width=140,
+            fg_color="#2D3A4F",
+            button_color="#3B82F6",
+            command=self._on_theme_changed,
+        ).pack(side="right")
+
         # App Settings checkboxes
         app_set = ctk.CTkFrame(page, fg_color="#1E293B", corner_radius=10)
         app_set.pack(fill="x", pady=12)
@@ -205,10 +222,20 @@ class SettingsDialog(ctk.CTkToplevel):
             command=self._save_basic,
         ).pack(anchor="w", padx=16, pady=(6, 16))
 
+    def _on_theme_changed(self, new_mode: str) -> None:
+        self.settings.appearance_mode = new_mode
+        self._save_basic()
+        if hasattr(self.main_app, "_set_appearance_mode"):
+            self.main_app._set_appearance_mode(new_mode)
+        else:
+            ctk.set_appearance_mode(new_mode.lower())
+
     def _save_basic(self) -> None:
         self.settings.display_floating_window = self.float_var.get()
         self.settings.run_in_background = self.bg_var.get()
         self.settings.monitor_clipboard = self.clip_var.get()
+        if hasattr(self, "theme_var"):
+            self.settings.appearance_mode = self.theme_var.get()
         self.on_save(self.settings)
 
     def _build_download_tab(self) -> None:

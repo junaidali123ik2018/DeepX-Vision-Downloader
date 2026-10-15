@@ -343,6 +343,23 @@ class HQVideoDownloaderApp(ctk.CTk):
         )
         self.top_menu_btn.pack(side="right", padx=(4, 18), pady=13)
 
+        # Theme Selector: Dark, Light, System
+        self.theme_var = ctk.StringVar(value=self.settings.appearance_mode.title())
+        self.theme_menu = ctk.CTkOptionMenu(
+            self.topbar,
+            values=["Dark", "Light", "System"],
+            variable=self.theme_var,
+            width=92,
+            height=34,
+            corner_radius=6,
+            fg_color=SECONDARY_BTN,
+            button_color=BLUE,
+            text_color=INK,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            command=self._set_appearance_mode,
+        )
+        self.theme_menu.pack(side="right", padx=4, pady=13)
+
         ctk.CTkButton(
             self.topbar,
             text="⚙ Settings",
@@ -455,9 +472,9 @@ class HQVideoDownloaderApp(ctk.CTk):
         hero = ctk.CTkFrame(
             self.dashboard_page,
             corner_radius=16,
-            fg_color=("#0F172A", "#0C1222"),
+            fg_color=SURFACE,
             border_width=1,
-            border_color=("#1E293B", "#1E293B"),
+            border_color=BORDER,
         )
         hero.pack(fill="x", padx=16, pady=(12, 12))
         hero.grid_columnconfigure(0, weight=7)
@@ -467,35 +484,35 @@ class HQVideoDownloaderApp(ctk.CTk):
         hero_left.grid(row=0, column=0, sticky="nsew", padx=(20, 10), pady=16)
 
         # Micro-badge
-        badge_frame = ctk.CTkFrame(hero_left, fg_color=("#1E293B", "#1E293B"), corner_radius=6)
+        badge_frame = ctk.CTkFrame(hero_left, fg_color=("#E0F2FE", "#1E293B"), corner_radius=6)
         badge_frame.pack(anchor="w", pady=(0, 6))
         ctk.CTkLabel(
             badge_frame,
             text="⚡ FAST • SECURE • HIGH QUALITY",
-            text_color="#38BDF8",
+            text_color=BLUE,
             font=ctk.CTkFont(size=10, weight="bold"),
         ).pack(padx=8, pady=3)
 
         # Heading: "Download Anything from the Web"
         heading_box = ctk.CTkFrame(hero_left, fg_color="transparent")
         heading_box.pack(anchor="w", pady=(0, 4))
-        ctk.CTkLabel(heading_box, text="Download ", text_color="#FFFFFF", font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
-        ctk.CTkLabel(heading_box, text="Anything ", text_color="#38BDF8", font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
-        ctk.CTkLabel(heading_box, text="from the Web", text_color="#FFFFFF", font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
+        ctk.CTkLabel(heading_box, text="Download ", text_color=INK, font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
+        ctk.CTkLabel(heading_box, text="Anything ", text_color=BLUE, font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
+        ctk.CTkLabel(heading_box, text="from the Web", text_color=INK, font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
 
         # Subtitle
         ctk.CTkLabel(
             hero_left,
             text="Paste any video, playlist, image, or audio link from YouTube, TikTok, Instagram, X and 1000+ sites.",
-            text_color="#94A3B8",
+            text_color=MUTED,
             font=ctk.CTkFont(size=12),
         ).pack(anchor="w", pady=(0, 12))
 
         # Main Hero Input Bar
-        input_card = ctk.CTkFrame(hero_left, corner_radius=10, fg_color=("#1E293B", "#131D30"), border_width=1, border_color="#334155")
+        input_card = ctk.CTkFrame(hero_left, corner_radius=10, fg_color=("#F1F5F9", "#131D30"), border_width=1, border_color=BORDER)
         input_card.pack(fill="x", pady=(0, 10))
 
-        ctk.CTkLabel(input_card, text="🔗", font=ctk.CTkFont(size=14), text_color="#38BDF8").pack(side="left", padx=(10, 4))
+        ctk.CTkLabel(input_card, text="🔗", font=ctk.CTkFont(size=14), text_color=BLUE).pack(side="left", padx=(10, 4))
 
         self.dash_url_var = ctk.StringVar()
         self.dash_url_entry = ctk.CTkEntry(
@@ -505,7 +522,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             height=38,
             border_width=0,
             fg_color="transparent",
-            text_color="#F8FAFC",
+            text_color=INK,
             font=ctk.CTkFont(size=13),
         )
         self.dash_url_entry.pack(side="left", fill="x", expand=True, padx=4)
@@ -523,7 +540,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             corner_radius=6,
             fg_color=SECONDARY_BTN,
             hover_color=SECONDARY_BTN_HOVER,
-            text_color="#FFFFFF",
+            text_color=INK,
             font=ctk.CTkFont(size=11, weight="bold"),
             command=self._paste_from_clipboard_dash,
         ).pack(side="left")
@@ -536,7 +553,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             corner_radius=6,
             fg_color=SECONDARY_BTN,
             hover_color=SECONDARY_BTN_HOVER,
-            text_color="#FFFFFF",
+            text_color=INK,
             command=self._show_paste_menu,
         )
         self.dash_paste_menu_btn.pack(side="left", padx=(2, 0))
@@ -1043,9 +1060,12 @@ class HQVideoDownloaderApp(ctk.CTk):
         )
         icon_lbl.pack(side="left")
 
-        bg_c = "#1E293B" if getattr(self, "settings", None) and self.settings.appearance_mode == "Dark" else "#FFFFFF"
+        bg_c = "#FFFFFF" if ctk.get_appearance_mode() == "Light" else "#1E293B"
         canvas = Canvas(top_row, width=70, height=28, bg=bg_c, highlightthickness=0)
         canvas.pack(side="right")
+        if not hasattr(self, "_spark_canvases"):
+            self._spark_canvases = []
+        self._spark_canvases.append(canvas)
         self._draw_sparkline(canvas, spark_points, color)
 
         ctk.CTkLabel(
@@ -4326,6 +4346,9 @@ class HQVideoDownloaderApp(ctk.CTk):
         self.store.save(updated)
         self.manager.set_worker_limit(updated.simultaneous_downloads)
         self._update_folder_label()
+        if hasattr(self, "theme_menu"):
+            self.theme_menu.set(updated.appearance_mode.title())
+        self._set_appearance_mode(updated.appearance_mode)
         if hasattr(self, "clipboard_monitor"):
             if getattr(updated, "monitor_clipboard", True):
                 self.clipboard_monitor.start()
@@ -4342,7 +4365,11 @@ class HQVideoDownloaderApp(ctk.CTk):
         menu.add_command(label="⚙ Settings", command=self._open_settings_dialog)
         menu.add_command(label="👤 Authorization (Log In)", command=lambda: self._open_settings_dialog("auth"))
         menu.add_separator()
-        menu.add_command(label="🌓 Toggle Dark / Light Mode", command=self._toggle_appearance)
+        theme_menu = Menu(menu, tearoff=False)
+        theme_menu.add_command(label="🌙 Dark Mode", command=lambda: self._set_appearance_mode("Dark"))
+        theme_menu.add_command(label="☀️ Light Mode", command=lambda: self._set_appearance_mode("Light"))
+        theme_menu.add_command(label="💻 System Default", command=lambda: self._set_appearance_mode("System"))
+        menu.add_cascade(label="🎨 Theme (Dark / Light / System)", menu=theme_menu)
         menu.add_separator()
         menu.add_command(label="ℹ About DeepX Vision Downloader", command=lambda: self._open_settings_dialog("about"))
         try:
@@ -4473,12 +4500,42 @@ class HQVideoDownloaderApp(ctk.CTk):
         self.clip_toast.place(relx=0.98, rely=0.96, anchor="se")
         self.after(12000, lambda: self.clip_toast.place_forget() if hasattr(self, "clip_toast") else None)
 
+    def _set_appearance_mode(self, mode: str) -> None:
+        m = mode.strip().lower()
+        if "light" in m:
+            clean = "Light"
+        elif "system" in m:
+            clean = "System"
+        else:
+            clean = "Dark"
+
+        ctk.set_appearance_mode(clean.lower())
+        self.settings.appearance_mode = clean
+        self.store.save(self.settings)
+
+        if hasattr(self, "theme_menu"):
+            self.theme_menu.set(clean)
+        if hasattr(self, "theme_var"):
+            self.theme_var.set(clean)
+
+        detected = ctk.get_appearance_mode()
+        c_bg = "#FFFFFF" if detected == "Light" else "#1E293B"
+        if hasattr(self, "_spark_canvases"):
+            for c in self._spark_canvases:
+                try:
+                    c.configure(bg=c_bg)
+                except Exception:
+                    pass
+
+        try:
+            self.configure(fg_color=BACKGROUND)
+        except Exception:
+            pass
+
     def _toggle_appearance(self) -> None:
         curr = ctk.get_appearance_mode()
         new_mode = "Light" if curr == "Dark" else "Dark"
-        ctk.set_appearance_mode(new_mode)
-        self.settings.appearance_mode = new_mode
-        self.store.save(self.settings)
+        self._set_appearance_mode(new_mode)
 
     def _paste_from_clipboard(self) -> None:
         try:
@@ -5453,7 +5510,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             self.speed_var.set(self.settings.default_speed_limit)
             self.manager.set_worker_limit(self.settings.simultaneous_downloads)
             self._update_folder_label()
-            ctk.set_appearance_mode(self.settings.appearance_mode.lower())
+            self._set_appearance_mode(self.settings.appearance_mode)
             dialog.destroy()
 
         footer = ctk.CTkFrame(dialog, fg_color="transparent")
