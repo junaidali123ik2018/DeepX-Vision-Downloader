@@ -567,7 +567,9 @@ class SettingsDialog(ctk.CTkToplevel):
     def _build_license_tab(self) -> None:
         page = ctk.CTkFrame(self.content_area, fg_color="transparent")
         self.pages["license"] = page
+        self._build_license_tab_content(page)
 
+    def _build_license_tab_content(self, page: ctk.CTkFrame) -> None:
         ctk.CTkLabel(page, text="License & Pro Edition", font=ctk.CTkFont(size=18, weight="bold"), text_color="#F8FAFC").pack(
             anchor="w", pady=(0, 16)
         )
@@ -602,67 +604,119 @@ class SettingsDialog(ctk.CTkToplevel):
 
         ctk.CTkButton(m_row, text="📋 Copy ID", width=80, height=26, fg_color="#334155", hover_color="#475569", command=copy_mid).pack(side="right")
 
-        # License Key entry
-        k_card = ctk.CTkFrame(page, fg_color="#1E293B", corner_radius=10)
-        k_card.pack(fill="x", pady=10)
-
-        ctk.CTkLabel(k_card, text="Enter License Key:", font=ctk.CTkFont(size=12, weight="bold"), text_color="#F8FAFC").pack(anchor="w", padx=16, pady=(12, 4))
-
-        key_input_row = ctk.CTkFrame(k_card, fg_color="transparent")
-        key_input_row.pack(fill="x", padx=16, pady=(0, 14))
-
-        self.lic_entry_var = ctk.StringVar(value=license_mgr.license_data.key if license_mgr.is_pro() else "")
-        entry = ctk.CTkEntry(
-            key_input_row,
-            textvariable=self.lic_entry_var,
-            placeholder_text="DXVP-XXXX-XXXX-XXXX-XXXX",
-            font=ctk.CTkFont(family="Consolas", size=12),
-            height=34,
-            fg_color="#0F172A",
-        )
-        entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
-
-        def activate_action():
-            k = self.lic_entry_var.get().strip().upper()
-            if not k:
-                messagebox.showwarning("Enter Key", "Please enter a license key.")
-                return
-            ok, msg = license_mgr.activate_key(k)
-            if ok:
-                messagebox.showinfo("Activated! 🎉", msg)
-                self.settings_lic_status.configure(text=license_mgr.get_status_text(), text_color="#34D399")
-            else:
-                messagebox.showerror("Error", msg)
-
-        ctk.CTkButton(key_input_row, text="⚡ Activate", width=95, height=34, fg_color="#2563EB", hover_color="#1D4ED8", font=ctk.CTkFont(size=12, weight="bold"), command=activate_action).pack(side="left", padx=(0, 6))
-
         if license_mgr.is_pro():
-            def deactivate_action():
-                if messagebox.askyesno("Deactivate", "Are you sure you want to deactivate the license on this machine?"):
+            # Action buttons for Pro user
+            actions_box = ctk.CTkFrame(page, fg_color="transparent")
+            actions_box.pack(fill="x", pady=12)
+
+            def change_key_action():
+                if messagebox.askyesno("Change Key", "This will deactivate the current key on this machine and let you enter a new one. Continue?"):
                     license_mgr.deactivate_key()
-                    self.settings_lic_status.configure(text=license_mgr.get_status_text(), text_color="#F59E0B")
-                    self.lic_entry_var.set("")
-            ctk.CTkButton(key_input_row, text="Deactivate", width=85, height=34, fg_color="#451A1A", hover_color="#7F1D1D", text_color="#FCA5A5", command=deactivate_action).pack(side="left")
+                    # Rebuild license tab
+                    for w in page.winfo_children():
+                        w.destroy()
+                    self._build_license_tab_content(page)
 
-        # Buy Plans Button
-        btn_box = ctk.CTkFrame(page, fg_color="transparent")
-        btn_box.pack(fill="x", pady=6)
+            def logout_action():
+                if messagebox.askyesno("Logout / Deactivate", "Are you sure you want to deactivate this Pro license on this machine?"):
+                    license_mgr.deactivate_key()
+                    for w in page.winfo_children():
+                        w.destroy()
+                    self._build_license_tab_content(page)
 
-        def open_pricing():
-            self.destroy()
-            from ui.pricing_modal import PricingModal
-            PricingModal(self.master)
+            def open_pricing():
+                self.destroy()
+                from ui.pricing_modal import PricingModal
+                PricingModal(self.master)
 
-        ctk.CTkButton(
-            btn_box,
-            text="🛒 View Commercial Plans (Lifetime $60 / Family $90) ➔",
-            height=38,
-            fg_color="#F97316",
-            hover_color="#EA580C",
-            text_color="#FFFFFF",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            command=open_pricing,
-        ).pack(fill="x")
+            ctk.CTkButton(
+                actions_box,
+                text="🔑 Change Key",
+                height=38,
+                fg_color="#334155",
+                hover_color="#475569",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                command=change_key_action,
+            ).pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+            ctk.CTkButton(
+                actions_box,
+                text="🚪 Logout / Deactivate",
+                height=38,
+                fg_color="#451A1A",
+                hover_color="#7F1D1D",
+                text_color="#FCA5A5",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                command=logout_action,
+            ).pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+            ctk.CTkButton(
+                actions_box,
+                text="🛒 View Pricing & Status",
+                height=38,
+                fg_color="#F97316",
+                hover_color="#EA580C",
+                text_color="#FFFFFF",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                command=open_pricing,
+            ).pack(side="left", fill="x", expand=True)
+
+        else:
+            # License Key entry for Trial users
+            k_card = ctk.CTkFrame(page, fg_color="#1E293B", corner_radius=10)
+            k_card.pack(fill="x", pady=10)
+
+            ctk.CTkLabel(k_card, text="Enter License Key:", font=ctk.CTkFont(size=12, weight="bold"), text_color="#F8FAFC").pack(anchor="w", padx=16, pady=(12, 4))
+
+            key_input_row = ctk.CTkFrame(k_card, fg_color="transparent")
+            key_input_row.pack(fill="x", padx=16, pady=(0, 14))
+
+            self.lic_entry_var = ctk.StringVar(value="")
+            entry = ctk.CTkEntry(
+                key_input_row,
+                textvariable=self.lic_entry_var,
+                placeholder_text="DXVP-XXXX-XXXX-XXXX-XXXX",
+                font=ctk.CTkFont(family="Consolas", size=12),
+                height=34,
+                fg_color="#0F172A",
+            )
+            entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+            def activate_action():
+                k = self.lic_entry_var.get().strip().upper()
+                if not k:
+                    messagebox.showwarning("Enter Key", "Please enter a license key.")
+                    return
+                ok, msg = license_mgr.activate_key(k)
+                if ok:
+                    messagebox.showinfo("Activated! 🎉", msg)
+                    for w in page.winfo_children():
+                        w.destroy()
+                    self._build_license_tab_content(page)
+                else:
+                    messagebox.showerror("Error", msg)
+
+            ctk.CTkButton(key_input_row, text="⚡ Activate", width=95, height=34, fg_color="#2563EB", hover_color="#1D4ED8", font=ctk.CTkFont(size=12, weight="bold"), command=activate_action).pack(side="left")
+
+            # Buy Plans Button
+            btn_box = ctk.CTkFrame(page, fg_color="transparent")
+            btn_box.pack(fill="x", pady=6)
+
+            def open_pricing():
+                self.destroy()
+                from ui.pricing_modal import PricingModal
+                PricingModal(self.master)
+
+            ctk.CTkButton(
+                btn_box,
+                text="🛒 View Commercial Plans (Lifetime $60 / Family $90) ➔",
+                height=38,
+                fg_color="#F97316",
+                hover_color="#EA580C",
+                text_color="#FFFFFF",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                command=open_pricing,
+            ).pack(fill="x")
 
     def _build_about_tab(self) -> None:
         page = ctk.CTkFrame(self.content_area, fg_color="transparent")

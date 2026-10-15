@@ -432,25 +432,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             command=self._show_notifications_dialog,
         ).pack(side="right", padx=4, pady=13)
 
-        user_badge = ctk.CTkFrame(self.topbar, height=36, corner_radius=18, fg_color=SECONDARY_BTN, border_width=1, border_color=BORDER)
-        user_badge.pack(side="right", padx=(4, 8), pady=12)
 
-        ctk.CTkLabel(
-            user_badge,
-            text="JA",
-            width=26,
-            height=26,
-            corner_radius=13,
-            fg_color=BLUE,
-            text_color="#FFFFFF",
-            font=ctk.CTkFont(size=11, weight="bold"),
-        ).pack(side="left", padx=(5, 6), pady=4)
-
-        user_info = ctk.CTkFrame(user_badge, fg_color="transparent")
-        user_info.pack(side="left", padx=(0, 10), pady=2)
-
-        ctk.CTkLabel(user_info, text="Junaid Ali", font=ctk.CTkFont(size=11, weight="bold"), text_color=INK).pack(anchor="w")
-        ctk.CTkLabel(user_info, text="● Online", font=ctk.CTkFont(size=9, weight="bold"), text_color="#10B981").pack(anchor="w")
 
         # Pro Status / Trial Badge Button
         self.pro_badge_btn = ctk.CTkButton(
@@ -4108,7 +4090,6 @@ class HQVideoDownloaderApp(ctk.CTk):
 
     def _show_top_menu(self) -> None:
         menu = Menu(self, tearoff=False)
-        menu.add_command(label="👑 Pro Licensing & Plans", command=self._open_pricing_modal)
         menu.add_command(label="🔑 Enter License Key...", command=self._open_license_dialog)
         menu.add_separator()
         menu.add_command(label="🔄 Check for App Updates...", command=self._check_for_updates)
