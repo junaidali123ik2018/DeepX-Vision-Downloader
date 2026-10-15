@@ -2849,20 +2849,15 @@ class HQVideoDownloaderApp(ctk.CTk):
             self.wait_window(dialog)
             dec, sel = decision_result[0], decision_result[1]
 
-            dup_urls_set = {it.get("url") or it.get("webpage_url") or it.get("original_url") for it, _ in duplicates}
-            non_duplicates = [it for it in items if (it.get("url") or it.get("webpage_url") or it.get("original_url")) not in dup_urls_set]
-            for it in non_duplicates:
-                items_to_queue.append((it, False))
-
-            if dec == "download_all":
-                for it, _ in duplicates:
-                    items_to_queue.append((it, True))
-            elif dec == "download_selected":
-                selected_urls = {d["url"] for d in sel}
-                for it, _ in duplicates:
-                    u_it = it.get("url") or it.get("webpage_url") or it.get("original_url")
-                    if u_it in selected_urls:
+            dup_urls_map = {it.get("url") or it.get("webpage_url") or it.get("original_url"): True for it, _ in duplicates}
+            selected_urls = {d["url"] for d in sel} if dec == "download_selected" else set()
+            for it in items:
+                u_it = it.get("url") or it.get("webpage_url") or it.get("original_url")
+                if u_it in dup_urls_map:
+                    if dec == "download_all" or (dec == "download_selected" and u_it in selected_urls):
                         items_to_queue.append((it, True))
+                else:
+                    items_to_queue.append((it, False))
         else:
             for it in items:
                 items_to_queue.append((it, False))
@@ -4624,12 +4619,21 @@ class HQVideoDownloaderApp(ctk.CTk):
         ctk.CTkButton(card, text="Paste", width=65, height=34, fg_color=SECONDARY_BTN, hover_color=SECONDARY_BTN_HOVER, text_color=BLUE, command=paste_clipboard).grid(row=1, column=1, padx=(0, 16), pady=(0, 10))
 
         # Max items dropdown
+        # Max items dropdown
         limit_box = ctk.CTkFrame(card, fg_color="transparent")
-        limit_box.grid(row=5, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 16))
+        limit_box.grid(row=5, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 10))
 
         ctk.CTkLabel(limit_box, text="Max items to fetch:", text_color=INK, font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=(0, 8))
         limit_var = ctk.StringVar(value="100 items")
         ctk.CTkOptionMenu(limit_box, values=["50 items", "100 items", "250 items", "500 items", "All items"], variable=limit_var, width=120).pack(side="left")
+
+        # Numbering order dropdown
+        order_box = ctk.CTkFrame(card, fg_color="transparent")
+        order_box.grid(row=6, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 16))
+
+        ctk.CTkLabel(order_box, text="Numbering Order:", text_color=INK, font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=(0, 8))
+        order_var = ctk.StringVar(value="Latest to Oldest (01=Latest)")
+        ctk.CTkOptionMenu(order_box, values=["Latest to Oldest (01=Latest)", "Oldest to Latest (01=Oldest)"], variable=order_var, width=220).pack(side="left")
 
         # Status label
         status_label = ctk.CTkLabel(dialog, text="", text_color=MUTED, font=ctk.CTkFont(size=11))
@@ -4653,6 +4657,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             limit_text = limit_var.get()
             max_items = 0 if "All" in limit_text else int(limit_text.split()[0])
             sel_mode = mode_var.get()
+            sel_order = "latest_first" if "Latest" in order_var.get() else "oldest_first"
 
             analyze_btn.configure(state="disabled")
             status_label.configure(text=f"Analyzing {sel_mode.lower()}... Please wait.")
@@ -4682,6 +4687,7 @@ class HQVideoDownloaderApp(ctk.CTk):
                             raw_url,
                             max_items=max_items,
                             mode="all_videos" if sel_mode == "All Videos" else "playlist",
+                            order=sel_order,
                         )
                         def on_video_done():
                             if not entries:
@@ -4690,7 +4696,7 @@ class HQVideoDownloaderApp(ctk.CTk):
                                 messagebox.showwarning("No Videos Found", "Could not find any videos in this playlist or channel.")
                                 return
                             dialog.destroy()
-                            self._show_playlist_selection_modal(title, entries)
+                            self._show_playlist_selection_modal(title, entries, order=sel_order)
                         self.after(0, on_video_done)
                 except Exception as exc:
                     def on_err(err_str=str(exc)):
@@ -5069,7 +5075,7 @@ class HQVideoDownloaderApp(ctk.CTk):
         )
         download_btn.pack(side="right")
 
-    def _show_playlist_selection_modal(self, playlist_title: str, entries: list[dict]) -> None:
+    def _show_playlist_selection_modal(self, playlist_title: str, entries: list[dict], order: str = "latest_first") -> None:
         clean_title = playlist_title[:65] + ("..." if len(playlist_title) > 65 else "")
         sel_quality = self.quality_var.get() if hasattr(self, "quality_var") else "Best Available"
 
@@ -5084,6 +5090,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             videos=entries,
             on_download_selected=_on_download,
             initial_quality=sel_quality,
+            order=order,
         )
 
 

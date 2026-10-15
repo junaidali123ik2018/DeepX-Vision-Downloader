@@ -86,13 +86,103 @@ def is_playlist_or_channel(url: str) -> bool:
     return False
 
 
+def sort_entries_by_order(
+    entries: list[dict],
+    order: str = "latest_first",
+    source_type: str = "playlist",
+) -> list[dict]:
+    """
+    Sorts a list of video entries according to requested order:
+    - 'latest_first': Latest/newest video is #01, next older is #02, oldest is #N.
+    - 'oldest_first': Oldest video is #01, next is #02, newest is #N.
+    - 'original': Preserves the raw extracted order.
+    """
+    if not entries or len(entries) <= 1 or order == "original":
+        return list(entries)
+
+    items = list(entries)
+
+    # 1. Check if entries have real timestamps or upload_dates
+    has_dates = any(e.get("timestamp") or e.get("upload_date") for e in items)
+    if has_dates:
+        def _get_sort_key(e):
+            ts = e.get("timestamp")
+            if ts:
+                return float(ts)
+            ud = e.get("upload_date")
+            if ud and str(ud).isdigit():
+                return float(ud)
+            return 0.0
+
+        if order == "latest_first":
+            items.sort(key=_get_sort_key, reverse=True)
+        elif order == "oldest_first":
+            items.sort(key=_get_sort_key, reverse=False)
+        return items
+
+    # 2. Check for 4-digit years in titles (e.g. 2024 vs 2019)
+    first_title = items[0].get("title", "")
+    last_title = items[-1].get("title", "")
+    y_first = re.search(r"\b(20[0-3]\d)\b", first_title)
+    y_last = re.search(r"\b(20[0-3]\d)\b", last_title)
+
+    if y_first and y_last and y_first.group(1) != y_last.group(1):
+        year_0 = int(y_first.group(1))
+        year_n = int(y_last.group(1))
+        currently_oldest_first = year_0 < year_n
+        if order == "latest_first" and currently_oldest_first:
+            items.reverse()
+        elif order == "oldest_first" and not currently_oldest_first:
+            items.reverse()
+        return items
+
+    # 3. Check for episode numbers (e.g. Ep 1 / Episode 01 vs Episode 50)
+    ep_first = re.search(r"\b(?:ep|episode|part|ch|chapter)[\s._-]*#?(\d+)\b", first_title, re.I)
+    ep_last = re.search(r"\b(?:ep|episode|part|ch|chapter)[\s._-]*#?(\d+)\b", last_title, re.I)
+    if ep_first and ep_last and ep_first.group(1) != ep_last.group(1):
+        ep_0 = int(ep_first.group(1))
+        ep_n = int(ep_last.group(1))
+        currently_oldest_first = ep_0 < ep_n
+        if order == "latest_first" and currently_oldest_first:
+            items.reverse()
+        elif order == "oldest_first" and not currently_oldest_first:
+            items.reverse()
+        return items
+
+    # 4. Standard platform convention:
+    # YouTube playlists are natively returned oldest-first (added order: video 1 added first, newest added at end).
+    # YouTube/TikTok/IG channel /videos tab: natively returned latest-first.
+    if source_type == "playlist":
+        if order == "latest_first":
+            items.reverse()
+    elif source_type == "channel":
+        if order == "oldest_first":
+            items.reverse()
+
+    return items
+
+
+def reindex_video_entries(entries: list[dict]) -> list[dict]:
+    """Applies clean sequential numbering (01, 02, 03...) to titles and index fields."""
+    if not entries:
+        return entries
+    has_multiple = len(entries) > 1
+    for idx, p in enumerate(entries, 1):
+        raw = p.get("title", "")
+        clean_raw = re.sub(r"^\d{1,4}[\.\s_-]+\s*", "", raw)
+        p["title"] = f"{idx:02d}. {clean_raw or raw or 'Video'}" if has_multiple else (clean_raw or raw or "Video")
+        p["index"] = idx
+    return entries
+
+
 def fetch_playlist_info(
     url: str,
     max_items: int = 0,
     mode: str = "auto",
+    order: str = "latest_first",
     progress_callback: Callable[[str], None] | None = None,
 ) -> tuple[str, list[dict]]:
-    """Fetches video titles, URLs, and metadata from a playlist or channel."""
+    """Fetches video titles, URLs, and metadata from a playlist or channel, ordered latest to oldest by default."""
     tiktok_profile, extracted_title = parse_tiktok_playlist_url(url)
     if tiktok_profile != url:
         norm_url = tiktok_profile
@@ -156,6 +246,8 @@ def fetch_playlist_info(
             "thumbnail": thumb_url,
             "thumbnail_url": thumb_url,
             "media_type": "short" if is_short else default_media_type,
+            "timestamp": e.get("timestamp") or e.get("release_timestamp"),
+            "upload_date": e.get("upload_date"),
         }
 
     # Special handling: For full YouTube channel in "all_videos" mode, grab BOTH videos and shorts
@@ -201,15 +293,8 @@ def fetch_playlist_info(
                 except Exception:
                     pass
 
-            if len(results) > 1:
-                for idx, p in enumerate(results, 1):
-                    raw = p.get("title", "")
-                    clean_raw = re.sub(r"^\d{1,4}[\.\s_-]+\s*", "", raw)
-                    p["title"] = f"{idx:02d}. {clean_raw or raw or 'Video'}"
-                    p["index"] = idx
-            elif len(results) == 1:
-                results[0]["index"] = 1
-
+            results = sort_entries_by_order(results, order=order, source_type="channel")
+            results = reindex_video_entries(results)
             return title, results
         except Exception as exc:
             if progress_callback:
@@ -245,15 +330,19 @@ def fetch_playlist_info(
                 if parsed:
                     results.append(parsed)
 
-            if len(results) > 1:
-                for idx, p in enumerate(results, 1):
-                    raw = p.get("title", "")
-                    clean_raw = re.sub(r"^\d{1,4}[\.\s_-]+\s*", "", raw)
-                    p["title"] = f"{idx:02d}. {clean_raw or raw or 'Video'}"
-                    p["index"] = idx
-            elif len(results) == 1:
-                results[0]["index"] = 1
-
+            is_ch = (
+                is_youtube_channel_url(url)
+                or is_youtube_channel_url(norm_url)
+                or "/channel/" in norm_url
+                or "/c/" in norm_url
+                or "/user/" in norm_url
+                or "/@" in norm_url
+                or "tiktok.com/@" in norm_url
+                or mode in ("all_videos", "all_playlists")
+            )
+            src_type = "channel" if is_ch else "playlist"
+            results = sort_entries_by_order(results, order=order, source_type=src_type)
+            results = reindex_video_entries(results)
             return title, results
     except Exception as exc:
         if progress_callback:

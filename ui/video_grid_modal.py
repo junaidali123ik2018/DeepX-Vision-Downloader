@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 import customtkinter as ctk
 
-from app.playlist import get_remote_image
+from app.playlist import get_remote_image, reindex_video_entries
 
 _POOL = ThreadPoolExecutor(max_workers=4)
 PAGE_SIZE = 24
@@ -158,16 +158,16 @@ class VideoGridModal(ctk.CTkToplevel):
         videos: list[dict],
         on_download_selected: Callable,
         initial_quality: str = "Best Available",
+        order: str = "latest_first",
     ) -> None:
         super().__init__(parent)
         self.parent_app = parent
         self.title_text = title
-        self.videos = videos
-        for i, v in enumerate(self.videos, 1):
-            if "index" not in v:
-                v["index"] = i
+        self.videos = list(videos)
+        self.current_order = order
+        reindex_video_entries(self.videos)
         self.on_download_selected = on_download_selected
-        self.selected_map: dict[str, bool] = {v.get("url", str(i)): True for i, v in enumerate(videos)}
+        self.selected_map: dict[str, bool] = {v.get("url", str(i)): True for i, v in enumerate(self.videos)}
         self.cards: list[VideoCardWidget] = []
         self.current_page = 0
 
@@ -235,6 +235,30 @@ class VideoGridModal(ctk.CTkToplevel):
             )
             self.filter_seg.set(self.filter_values[0])
             self.filter_seg.pack(side="left", padx=(4, 10))
+
+        # Order / Numbering dropdown on top-right
+        order_default_val = "Latest to Oldest (01=Latest)" if order == "latest_first" else "Oldest to Latest (01=Oldest)"
+        self.order_var = ctk.StringVar(value=order_default_val)
+        self.order_menu = ctk.CTkOptionMenu(
+            top_bar,
+            values=["Latest to Oldest (01=Latest)", "Oldest to Latest (01=Oldest)"],
+            variable=self.order_var,
+            width=205,
+            height=28,
+            fg_color="#334155",
+            button_color="#2563EB",
+            text_color="#F8FAFC",
+            font=ctk.CTkFont(size=11),
+            command=self._on_order_changed,
+        )
+        self.order_menu.pack(side="right", padx=(4, 16))
+
+        ctk.CTkLabel(
+            top_bar,
+            text="Order:",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#94A3B8",
+        ).pack(side="right", padx=(8, 2))
 
         # 2. Pagination & Global Selection Bar
         self.page_bar = ctk.CTkFrame(self, height=42, fg_color="#182234", corner_radius=0)
@@ -388,6 +412,17 @@ class VideoGridModal(ctk.CTkToplevel):
         self.current_page = 0
         self._populate_cards()
 
+    def _on_order_changed(self, value: str) -> None:
+        new_order = "latest_first" if "Latest" in value else "oldest_first"
+        if new_order != self.current_order:
+            self.current_order = new_order
+            self.videos.reverse()
+            reindex_video_entries(self.videos)
+            self.videos_regular = [v for v in self.videos if v.get("media_type") != "short" and "/shorts/" not in str(v.get("url", ""))]
+            self.videos_shorts = [v for v in self.videos if v.get("media_type") == "short" or "/shorts/" in str(v.get("url", ""))]
+            self.current_page = 0
+            self._populate_cards()
+
     def _populate_cards(self) -> None:
         for widget in self.scroll.winfo_children():
             widget.destroy()
@@ -497,6 +532,7 @@ class VideoGridModal(ctk.CTkToplevel):
             pass
         self.destroy()
         if chosen and cb:
+            reindex_video_entries(chosen)
             try:
                 cb(chosen, q)
             except TypeError:
