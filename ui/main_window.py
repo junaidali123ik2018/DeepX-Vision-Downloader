@@ -2052,32 +2052,39 @@ class HQVideoDownloaderApp(ctk.CTk):
         messagebox.showinfo("Download Started", f"Downloading {title}.jpg...")
 
     def _build_converter_page(self) -> None:
-        """Dedicated media converter section for local files with format & resolution selection."""
+        """Dedicated media converter section with format dropdowns, bulk/batch conversion, and windowless execution."""
         self.converter_page = ctk.CTkScrollableFrame(self.content, fg_color="transparent")
         self.converter_page.grid_columnconfigure(0, weight=1)
+
+        self._converter_files: list[str] = []
+        self._converter_file_statuses: dict[str, str] = {}
+        self._converter_file_badge_labels: dict[str, ctk.CTkLabel] = {}
+        self._converter_output_file: str | None = None
+        self._conv_is_running: bool = False
+        self._conv_cancel_requested: bool = False
 
         # Title & Subtitle
         ctk.CTkLabel(
             self.converter_page,
-            text="Media Converter",
+            text="Media Converter & Bulk Transcoder",
             text_color=INK,
             font=ctk.CTkFont(size=22, weight="bold"),
         ).pack(anchor="w", padx=28, pady=(22, 2))
 
         ctk.CTkLabel(
             self.converter_page,
-            text="Convert local videos or audio between formats, or upscale/downscale resolution (up to 8K).",
+            text="Convert single or bulk local videos and audios between formats, or adjust resolution (up to 8K).",
             text_color=MUTED,
             font=ctk.CTkFont(size=12),
         ).pack(anchor="w", padx=28, pady=(0, 16))
 
-        # 1. Source File Selector Card
-        file_card = ctk.CTkFrame(self.converter_page, corner_radius=14, fg_color=SURFACE, border_width=1, border_color=BORDER)
-        file_card.pack(fill="x", padx=28, pady=(0, 14))
-        file_card.grid_columnconfigure(1, weight=1)
+        # 1. Source Files & Bulk Selection Card
+        self.conv_file_card = ctk.CTkFrame(self.converter_page, corner_radius=14, fg_color=SURFACE, border_width=1, border_color=BORDER)
+        self.conv_file_card.pack(fill="x", padx=28, pady=(0, 14))
+        self.conv_file_card.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(
-            file_card,
+            self.conv_file_card,
             text="🎬",
             width=44,
             height=44,
@@ -2087,8 +2094,8 @@ class HQVideoDownloaderApp(ctk.CTk):
         ).grid(row=0, column=0, rowspan=2, padx=(16, 12), pady=14)
 
         self.conv_file_title = ctk.CTkLabel(
-            file_card,
-            text="No media file selected",
+            self.conv_file_card,
+            text="No media files selected",
             text_color=INK,
             font=ctk.CTkFont(size=14, weight="bold"),
             anchor="w",
@@ -2096,139 +2103,203 @@ class HQVideoDownloaderApp(ctk.CTk):
         self.conv_file_title.grid(row=0, column=1, sticky="ew", pady=(14, 2))
 
         self.conv_file_subtitle = ctk.CTkLabel(
-            file_card,
-            text="Choose an MP4, MKV, AVI, MOV, WMV, MP3, WAV, or FLAC file from your computer.",
+            self.conv_file_card,
+            text="Choose single/multiple video or audio files, or select an entire folder.",
             text_color=MUTED,
             font=ctk.CTkFont(size=11),
             anchor="w",
         )
         self.conv_file_subtitle.grid(row=1, column=1, sticky="ew", pady=(0, 14))
 
+        # Action buttons for file selection
+        file_actions_box = ctk.CTkFrame(self.conv_file_card, fg_color="transparent")
+        file_actions_box.grid(row=0, column=2, rowspan=2, padx=(10, 16), pady=14, sticky="e")
+
         ctk.CTkButton(
-            file_card,
-            text="Browse File",
-            width=105,
+            file_actions_box,
+            text="+ Add Files",
+            width=100,
             height=34,
             corner_radius=8,
             fg_color=BLUE,
             hover_color=BLUE_HOVER,
-            command=self._converter_browse_file,
-        ).grid(row=0, column=2, rowspan=2, padx=(10, 16), pady=14)
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=self._converter_browse_files,
+        ).pack(side="left", padx=4)
 
-        # 2. Format Selection Card (Inspired by User Screenshot)
+        ctk.CTkButton(
+            file_actions_box,
+            text="📁 Add Folder",
+            width=105,
+            height=34,
+            corner_radius=8,
+            fg_color=SECONDARY_BTN,
+            hover_color=SECONDARY_BTN_HOVER,
+            text_color=INK,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=self._converter_browse_folder,
+        ).pack(side="left", padx=4)
+
+        self.conv_clear_btn = ctk.CTkButton(
+            file_actions_box,
+            text="Clear",
+            width=65,
+            height=34,
+            corner_radius=8,
+            fg_color="transparent",
+            border_width=1,
+            border_color=BORDER,
+            text_color=MUTED,
+            hover_color=SECONDARY_BTN_HOVER,
+            command=self._converter_clear_files,
+            state="disabled",
+        )
+        self.conv_clear_btn.pack(side="left", padx=4)
+
+        # Queue Scrollable List (shown when files are loaded)
+        self.conv_queue_container = ctk.CTkFrame(self.conv_file_card, fg_color="transparent")
+        self.conv_queue_container.grid(row=2, column=0, columnspan=3, sticky="ew", padx=16, pady=(0, 14))
+        self.conv_queue_container.grid_remove()  # Hidden until files are added
+
+        self.conv_queue_scroll = ctk.CTkScrollableFrame(
+            self.conv_queue_container,
+            height=130,
+            corner_radius=10,
+            fg_color=BACKGROUND,
+            border_width=1,
+            border_color=BORDER,
+        )
+        self.conv_queue_scroll.pack(fill="x", expand=True)
+
+        # 2. Output Format Card with Dropdowns
         format_card = ctk.CTkFrame(self.converter_page, corner_radius=14, fg_color=SURFACE, border_width=1, border_color=BORDER)
         format_card.pack(fill="x", padx=28, pady=(0, 14))
 
-        self.converter_selected_format = ctk.StringVar(value="MP4")
-        self.converter_format_buttons: dict[str, ctk.CTkButton] = {}
-
-        # Video Formats
         ctk.CTkLabel(
             format_card,
-            text="Video Formats",
+            text="Output Format & Settings",
             text_color=INK,
             font=ctk.CTkFont(size=15, weight="bold"),
-        ).pack(anchor="w", padx=20, pady=(18, 10))
+        ).pack(anchor="w", padx=20, pady=(16, 6))
 
-        video_formats = [
-            "MP4", "Original Video", "HEVC MP4", "MOV",
-            "AVI", "FLV", "WMV", "HEVC MKV",
-            "MKV", "3GP", "iPhone/iPod", "iPad",
-            "Android Phone", "Android Tablets",
-        ]
+        # Mode Selector (Video Formats vs Audio Formats)
+        mode_box = ctk.CTkFrame(format_card, fg_color="transparent")
+        mode_box.pack(fill="x", padx=20, pady=(0, 14))
 
-        v_grid = ctk.CTkFrame(format_card, fg_color="transparent")
-        v_grid.pack(fill="x", padx=16, pady=(0, 14))
-        for col in range(4):
-            v_grid.grid_columnconfigure(col, weight=1)
+        self.conv_mode_seg = ctk.CTkSegmentedButton(
+            mode_box,
+            values=["🎬 Video Formats", "🎵 Audio Formats"],
+            command=self._on_conv_mode_changed,
+            height=32,
+            font=ctk.CTkFont(size=12, weight="bold"),
+        )
+        self.conv_mode_seg.set("🎬 Video Formats")
+        self.conv_mode_seg.pack(side="left")
 
-        for i, fmt in enumerate(video_formats):
-            btn = ctk.CTkButton(
-                v_grid,
-                text=f"•  {fmt}",
-                height=32,
-                corner_radius=8,
-                fg_color=BLUE if fmt == "MP4" else SECONDARY_BTN,
-                hover_color=BLUE_HOVER if fmt == "MP4" else SECONDARY_BTN_HOVER,
-                text_color="#FFFFFF" if fmt == "MP4" else INK,
-                font=ctk.CTkFont(size=12, weight="bold"),
-                command=lambda f=fmt: self._select_conv_format(f),
-            )
-            btn.grid(row=i // 4, column=i % 4, padx=5, pady=4, sticky="ew")
-            self.converter_format_buttons[fmt] = btn
+        # 3 Dropdowns Frame (Video Format, Audio Format, Resolution)
+        dropdowns_frame = ctk.CTkFrame(format_card, fg_color="transparent")
+        dropdowns_frame.pack(fill="x", padx=16, pady=(0, 18))
+        dropdowns_frame.grid_columnconfigure((0, 1, 2), weight=1)
 
-        # Audio Formats
-        ctk.CTkLabel(
-            format_card,
-            text="Audio Formats",
-            text_color=INK,
-            font=ctk.CTkFont(size=15, weight="bold"),
-        ).pack(anchor="w", padx=20, pady=(4, 10))
+        # Column 0: Video Format Dropdown
+        col0 = ctk.CTkFrame(dropdowns_frame, fg_color="transparent")
+        col0.grid(row=0, column=0, padx=8, sticky="nsew")
+        self.conv_video_label = ctk.CTkLabel(col0, text="Video Format:", text_color=INK, font=ctk.CTkFont(size=12, weight="bold"))
+        self.conv_video_label.pack(anchor="w", pady=(0, 4))
+        self.conv_video_fmt_var = ctk.StringVar(value="MP4 (Universal)")
+        self.conv_video_menu = ctk.CTkOptionMenu(
+            col0,
+            values=[
+                "MP4 (Universal)", "HEVC MP4 (H.265)", "MOV (QuickTime)", "MKV (Matroska)",
+                "HEVC MKV (H.265)", "AVI (Standard)", "WMV (Windows)", "FLV (Flash)",
+                "3GP (Mobile)", "iPhone/iPod", "Android Phone", "Original Video",
+            ],
+            variable=self.conv_video_fmt_var,
+            command=self._on_video_fmt_selected,
+            height=34,
+            corner_radius=8,
+            fg_color=BLUE,
+        )
+        self.conv_video_menu.pack(fill="x")
 
-        audio_formats = [
-            "MP3", "Original Audio", "M4A", "WAV",
-            "AAC", "FLAC", "OGG", "AIFF",
-            "MKA",
-        ]
+        # Column 1: Audio Format Dropdown
+        col1 = ctk.CTkFrame(dropdowns_frame, fg_color="transparent")
+        col1.grid(row=0, column=1, padx=8, sticky="nsew")
+        self.conv_audio_label = ctk.CTkLabel(col1, text="Audio Format:", text_color=MUTED, font=ctk.CTkFont(size=12, weight="bold"))
+        self.conv_audio_label.pack(anchor="w", pady=(0, 4))
+        self.conv_audio_fmt_var = ctk.StringVar(value="MP3 (192k)")
+        self.conv_audio_menu = ctk.CTkOptionMenu(
+            col1,
+            values=[
+                "MP3 (192k)", "M4A (AAC)", "WAV (Lossless)", "AAC (Advanced)",
+                "FLAC (Lossless)", "OGG (Vorbis)", "AIFF (Apple)", "MKA (Matroska)",
+                "Original Audio",
+            ],
+            variable=self.conv_audio_fmt_var,
+            command=self._on_audio_fmt_selected,
+            height=34,
+            corner_radius=8,
+            fg_color=SECONDARY_BTN,
+            state="disabled",
+        )
+        self.conv_audio_menu.pack(fill="x")
 
-        a_grid = ctk.CTkFrame(format_card, fg_color="transparent")
-        a_grid.pack(fill="x", padx=16, pady=(0, 18))
-        for col in range(4):
-            a_grid.grid_columnconfigure(col, weight=1)
-
-        for i, fmt in enumerate(audio_formats):
-            btn = ctk.CTkButton(
-                a_grid,
-                text=f"•  {fmt}",
-                height=32,
-                corner_radius=8,
-                fg_color=SECONDARY_BTN,
-                hover_color=SECONDARY_BTN_HOVER,
-                text_color=INK,
-                font=ctk.CTkFont(size=12, weight="bold"),
-                command=lambda f=fmt: self._select_conv_format(f),
-            )
-            btn.grid(row=i // 4, column=i % 4, padx=5, pady=4, sticky="ew")
-            self.converter_format_buttons[fmt] = btn
-
-        # 3. Settings & Execution Card
-        opts_card = ctk.CTkFrame(self.converter_page, corner_radius=14, fg_color=SURFACE, border_width=1, border_color=BORDER)
-        opts_card.pack(fill="x", padx=28, pady=(0, 24))
-        opts_card.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(opts_card, text="Target Resolution:", text_color=INK, font=ctk.CTkFont(size=13, weight="bold")).grid(row=0, column=0, padx=(18, 10), pady=(16, 6), sticky="w")
+        # Column 2: Target Resolution Dropdown
+        col2 = ctk.CTkFrame(dropdowns_frame, fg_color="transparent")
+        col2.grid(row=0, column=2, padx=8, sticky="nsew")
+        self.conv_res_label = ctk.CTkLabel(col2, text="Target Resolution:", text_color=INK, font=ctk.CTkFont(size=12, weight="bold"))
+        self.conv_res_label.pack(anchor="w", pady=(0, 4))
         self.conv_res_var = ctk.StringVar(value="Original")
         self.conv_res_menu = ctk.CTkOptionMenu(
-            opts_card,
-            values=["Original", "8K (4320p)", "4K (2160p)", "2K / 1440p", "1080p", "720p", "480p", "360p", "240p", "144p"],
+            col2,
+            values=["Original", "8K (4320p)", "4K (2160p)", "2K / 1440p", "1080p (Full HD)", "720p (HD)", "480p (SD)", "360p", "240p", "144p"],
             variable=self.conv_res_var,
-            width=150,
-            height=32,
+            height=34,
             corner_radius=8,
         )
-        self.conv_res_menu.grid(row=0, column=1, padx=(0, 18), pady=(16, 6), sticky="w")
+        self.conv_res_menu.pack(fill="x")
 
-        # Action row
+        # 3. Action & Execution Card
+        opts_card = ctk.CTkFrame(self.converter_page, corner_radius=14, fg_color=SURFACE, border_width=1, border_color=BORDER)
+        opts_card.pack(fill="x", padx=28, pady=(0, 24))
+        opts_card.grid_columnconfigure(0, weight=1)
+
+        # Action buttons row
         action_box = ctk.CTkFrame(opts_card, fg_color="transparent")
-        action_box.grid(row=1, column=0, columnspan=2, sticky="ew", padx=18, pady=(10, 14))
+        action_box.pack(fill="x", padx=18, pady=(16, 12))
 
         self.conv_start_btn = ctk.CTkButton(
             action_box,
             text="⇄  Convert Now",
-            width=140,
+            width=150,
             height=36,
             corner_radius=8,
             fg_color=BLUE,
             hover_color=BLUE_HOVER,
             font=ctk.CTkFont(size=13, weight="bold"),
             command=self._start_conversion,
+            state="disabled",
         )
         self.conv_start_btn.pack(side="left")
 
+        self.conv_stop_btn = ctk.CTkButton(
+            action_box,
+            text="⏹  Stop",
+            width=90,
+            height=36,
+            corner_radius=8,
+            fg_color="#EF4444",
+            hover_color="#DC2626",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=self._stop_conversion,
+            state="disabled",
+        )
+        self.conv_stop_btn.pack(side="left", padx=10)
+
         self.conv_open_btn = ctk.CTkButton(
             action_box,
-            text="Open Folder",
-            width=120,
+            text="📂 Open Output Folder",
+            width=160,
             height=36,
             corner_radius=8,
             fg_color=SECONDARY_BTN,
@@ -2237,105 +2308,341 @@ class HQVideoDownloaderApp(ctk.CTk):
             state="disabled",
             command=self._open_converted_folder,
         )
-        self.conv_open_btn.pack(side="left", padx=10)
+        self.conv_open_btn.pack(side="left")
 
-        # Progress bar & status
-        self.conv_progress = ctk.CTkProgressBar(opts_card, height=6, corner_radius=4, progress_color="#2563EB")
+        # Smooth Progress bar & status
+        self.conv_progress = ctk.CTkProgressBar(opts_card, height=8, corner_radius=4, progress_color=BLUE)
         self.conv_progress.set(0.0)
-        self.conv_progress.grid(row=2, column=0, columnspan=2, sticky="ew", padx=18, pady=(0, 6))
+        self.conv_progress.pack(fill="x", padx=18, pady=(0, 6))
 
         self.conv_status_label = ctk.CTkLabel(
             opts_card,
-            text="Ready • Select a file and format to convert",
+            text="Ready • Add files or folder and choose format to convert",
             text_color=MUTED,
             font=ctk.CTkFont(size=11),
             anchor="w",
         )
-        self.conv_status_label.grid(row=3, column=0, columnspan=2, sticky="ew", padx=18, pady=(0, 16))
+        self.conv_status_label.pack(fill="x", padx=18, pady=(0, 16))
 
-        self._converter_input_file: str | None = None
-        self._converter_output_file: str | None = None
+    def _on_conv_mode_changed(self, val: str) -> None:
+        if "Video" in val:
+            self.conv_video_label.configure(text_color=INK)
+            self.conv_video_menu.configure(state="normal", fg_color=BLUE)
+            self.conv_audio_label.configure(text_color=MUTED)
+            self.conv_audio_menu.configure(state="disabled", fg_color=SECONDARY_BTN)
+            self.conv_res_label.configure(text="Target Resolution:", text_color=INK)
+            self.conv_res_menu.configure(state="normal")
+        else:
+            self.conv_video_label.configure(text_color=MUTED)
+            self.conv_video_menu.configure(state="disabled", fg_color=SECONDARY_BTN)
+            self.conv_audio_label.configure(text_color=INK)
+            self.conv_audio_menu.configure(state="normal", fg_color=BLUE)
+            self.conv_res_label.configure(text="Target Resolution: (N/A for Audio)", text_color=MUTED)
+            self.conv_res_menu.configure(state="disabled")
 
-    def _select_conv_format(self, fmt: str) -> None:
-        self.converter_selected_format.set(fmt)
-        for name, btn in self.converter_format_buttons.items():
-            if name == fmt:
-                btn.configure(fg_color=BLUE, hover_color=BLUE_HOVER, text_color="#FFFFFF")
-            else:
-                btn.configure(fg_color=SECONDARY_BTN, hover_color=SECONDARY_BTN_HOVER, text_color=INK)
+    def _on_video_fmt_selected(self, val: str) -> None:
+        self.conv_mode_seg.set("🎬 Video Formats")
+        self._on_conv_mode_changed("🎬 Video Formats")
 
-    def _converter_browse_file(self) -> None:
-        selected = filedialog.askopenfilename(
-            title="Select video or audio to convert",
+    def _on_audio_fmt_selected(self, val: str) -> None:
+        self.conv_mode_seg.set("🎵 Audio Formats")
+        self._on_conv_mode_changed("🎵 Audio Formats")
+
+    def _converter_browse_files(self) -> None:
+        selected = filedialog.askopenfilenames(
+            title="Select videos or audios to convert",
             filetypes=[
-                ("Media Files", "*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.3gp *.webm *.mp3 *.m4a *.wav *.aac *.flac *.ogg"),
+                ("Media Files", "*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.3gp *.webm *.ts *.m4v *.mp3 *.m4a *.wav *.aac *.flac *.ogg *.aiff *.mka"),
+                ("Video Files", "*.mp4 *.mkv *.avi *.mov *.wmv *.flv *.3gp *.webm *.ts *.m4v"),
+                ("Audio Files", "*.mp3 *.m4a *.wav *.aac *.flac *.ogg *.aiff *.mka"),
                 ("All files", "*.*"),
             ],
         )
         if selected:
-            self._converter_input_file = selected
-            p = Path(selected)
-            self.conv_file_title.configure(text=p.name)
-            try:
-                size_str = format_bytes(os.path.getsize(selected))
-                self.conv_file_subtitle.configure(text=f"Path: {p}  •  Size: {size_str}")
-            except OSError:
-                self.conv_file_subtitle.configure(text=f"Path: {p}")
-            self.conv_status_label.configure(text="File loaded. Click 'Convert Now' to start.")
-            self.conv_progress.set(0.0)
-            self.conv_open_btn.configure(state="disabled")
+            existing = set(self._converter_files)
+            for f in selected:
+                if f not in existing:
+                    self._converter_files.append(f)
+                    self._converter_file_statuses[f] = "Queued"
+            self._render_converter_queue()
 
-    def _start_conversion(self) -> None:
-        if not self._converter_input_file or not Path(self._converter_input_file).is_file():
-            messagebox.showwarning("No File", "Please select a media file first using 'Browse File'.")
+    def _converter_browse_folder(self) -> None:
+        folder = filedialog.askdirectory(title="Select folder containing media files")
+        if folder:
+            p = Path(folder)
+            valid_exts = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".3gp", ".webm", ".ts", ".m4v", ".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg", ".aiff", ".mka"}
+            found = [str(f) for f in p.rglob("*") if f.is_file() and f.suffix.lower() in valid_exts]
+            if not found:
+                messagebox.showinfo("No Media Files", f"No supported audio or video files found in:\n{folder}")
+                return
+            existing = set(self._converter_files)
+            added = 0
+            for f in found:
+                if f not in existing:
+                    self._converter_files.append(f)
+                    self._converter_file_statuses[f] = "Queued"
+                    added += 1
+            self._render_converter_queue()
+
+    def _converter_clear_files(self) -> None:
+        if self._conv_is_running:
+            return
+        self._converter_files.clear()
+        self._converter_file_statuses.clear()
+        self._converter_file_badge_labels.clear()
+        self._render_converter_queue()
+
+    def _remove_converter_file(self, file_path: str) -> None:
+        if self._conv_is_running:
+            return
+        if file_path in self._converter_files:
+            self._converter_files.remove(file_path)
+            self._converter_file_statuses.pop(file_path, None)
+            self._converter_file_badge_labels.pop(file_path, None)
+            self._render_converter_queue()
+
+    def _render_converter_queue(self) -> None:
+        for w in self.conv_queue_scroll.winfo_children():
+            w.destroy()
+        self._converter_file_badge_labels.clear()
+
+        total = len(self._converter_files)
+        if total == 0:
+            self.conv_queue_container.grid_remove()
+            self.conv_file_title.configure(text="No media files selected")
+            self.conv_file_subtitle.configure(text="Choose single/multiple video or audio files, or select an entire folder.")
+            self.conv_start_btn.configure(text="⇄  Convert Now", state="disabled")
+            self.conv_clear_btn.configure(state="disabled")
+            self.conv_status_label.configure(text="Ready • Add files or folder and choose format to convert")
             return
 
-        target_fmt = self.converter_selected_format.get()
-        target_res = self.conv_res_var.get()
+        self.conv_queue_container.grid()
+        self.conv_clear_btn.configure(state="normal")
+
+        total_bytes = 0
+        for f in self._converter_files:
+            try:
+                total_bytes += os.path.getsize(f)
+            except OSError:
+                pass
+        size_str = format_bytes(total_bytes)
+
+        if total == 1:
+            self.conv_file_title.configure(text=Path(self._converter_files[0]).name)
+            self.conv_file_subtitle.configure(text=f"1 file queued  •  Size: {size_str}")
+            self.conv_start_btn.configure(text="⇄  Convert Now", state="normal")
+        else:
+            self.conv_file_title.configure(text=f"{total} Files Queued for Bulk Conversion")
+            self.conv_file_subtitle.configure(text=f"Total size: {size_str}  •  Batch conversion mode active")
+            self.conv_start_btn.configure(text=f"⇄  Convert All ({total})", state="normal")
+
+        audio_exts = {".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg", ".aiff", ".mka"}
+        for idx, f_path in enumerate(self._converter_files, 1):
+            p = Path(f_path)
+            is_audio = p.suffix.lower() in audio_exts
+            icon = "🎵" if is_audio else "🎬"
+
+            row = ctk.CTkFrame(self.conv_queue_scroll, fg_color=SURFACE, corner_radius=6, height=32)
+            row.pack(fill="x", padx=4, pady=2)
+            row.grid_columnconfigure(1, weight=1)
+
+            # Icon & Index
+            ctk.CTkLabel(
+                row,
+                text=f"{idx}. {icon}",
+                text_color=MUTED,
+                font=ctk.CTkFont(size=11),
+                width=36,
+            ).grid(row=0, column=0, padx=(8, 4), pady=4)
+
+            # File Name
+            f_display = p.name if len(p.name) <= 65 else f"{p.name[:62]}..."
+            ctk.CTkLabel(
+                row,
+                text=f_display,
+                text_color=INK,
+                font=ctk.CTkFont(size=12, weight="bold"),
+                anchor="w",
+            ).grid(row=0, column=1, sticky="ew", padx=4, pady=4)
+
+            # File Size
+            try:
+                f_sz = format_bytes(os.path.getsize(f_path))
+            except OSError:
+                f_sz = ""
+            ctk.CTkLabel(
+                row,
+                text=f_sz,
+                text_color=MUTED,
+                font=ctk.CTkFont(size=11),
+                width=75,
+                anchor="e",
+            ).grid(row=0, column=2, padx=6, pady=4)
+
+            # Status Badge
+            st = self._converter_file_statuses.get(f_path, "Queued")
+            badge = ctk.CTkLabel(
+                row,
+                text=st,
+                text_color="#10B981" if "Converted" in st else (BLUE if "Converting" in st else MUTED),
+                font=ctk.CTkFont(size=11, weight="bold"),
+                width=90,
+                anchor="center",
+            )
+            badge.grid(row=0, column=3, padx=6, pady=4)
+            self._converter_file_badge_labels[f_path] = badge
+
+            # Remove 'x' button
+            ctk.CTkButton(
+                row,
+                text="✕",
+                width=24,
+                height=24,
+                corner_radius=6,
+                fg_color="transparent",
+                hover_color=SECONDARY_BTN_HOVER,
+                text_color=MUTED,
+                font=ctk.CTkFont(size=11),
+                command=lambda pth=f_path: self._remove_converter_file(pth),
+            ).grid(row=0, column=4, padx=(2, 6), pady=4)
+
+    def _start_conversion(self) -> None:
+        if not self._converter_files:
+            messagebox.showwarning("No Files", "Please add at least one media file using 'Add Files' or 'Add Folder'.")
+            return
+        if self._conv_is_running:
+            return
+
+        self._conv_is_running = True
+        self._conv_cancel_requested = False
+
+        is_video_mode = "Video" in self.conv_mode_seg.get()
+        target_fmt = self.conv_video_fmt_var.get() if is_video_mode else self.conv_audio_fmt_var.get()
+        target_res = self.conv_res_var.get() if is_video_mode else "Original"
         out_dir = str(self.settings.resolved_download_folder())
 
         self.conv_start_btn.configure(state="disabled")
+        self.conv_stop_btn.configure(state="normal")
         self.conv_open_btn.configure(state="disabled")
-        self.conv_progress.set(0.2)
-        self.conv_status_label.configure(text=f"Converting to {target_fmt} ({target_res})... Please wait.")
+        self.conv_clear_btn.configure(state="disabled")
+        self.conv_progress.set(0.0)
 
-        def run_thread():
-            try:
-                out_path = convert_media(
-                    input_path=self._converter_input_file,
-                    output_dir=out_dir,
-                    target_format=target_fmt,
-                    target_resolution=target_res,
-                )
-                self._converter_output_file = out_path
+        total_files = len(self._converter_files)
+        files_to_process = list(self._converter_files)
 
-                def on_done():
-                    self.conv_progress.set(1.0)
-                    self.conv_status_label.configure(
-                        text=f"✓ Conversion completed! Saved as: {Path(out_path).name}"
+        def worker():
+            success_count = 0
+            err_count = 0
+            cancelled = False
+
+            for idx, file_path in enumerate(files_to_process):
+                if self._conv_cancel_requested:
+                    cancelled = True
+                    break
+
+                file_name = Path(file_path).name
+                self._converter_file_statuses[file_path] = "Converting..."
+
+                def mark_conv_start(fp=file_path):
+                    lbl = self._converter_file_badge_labels.get(fp)
+                    if lbl and lbl.winfo_exists():
+                        lbl.configure(text="Converting…", text_color=BLUE)
+                self.after(0, mark_conv_start)
+
+                def on_file_prog(pct: float, msg: str, f_idx=idx, f_name=file_name, fp=file_path):
+                    overall = (f_idx + pct) / total_files
+                    def update_ui():
+                        self.conv_progress.set(overall)
+                        self.conv_status_label.configure(
+                            text=f"Converting ({f_idx + 1}/{total_files}): {f_name} • {msg} • Overall: {int(overall * 100)}%"
+                        )
+                        lbl = self._converter_file_badge_labels.get(fp)
+                        if lbl and lbl.winfo_exists():
+                            lbl.configure(text=f"{int(pct * 100)}%", text_color=BLUE)
+                    self.after(0, update_ui)
+
+                try:
+                    out_path = convert_media(
+                        input_path=file_path,
+                        output_dir=out_dir,
+                        target_format=target_fmt,
+                        target_resolution=target_res,
+                        on_progress=on_file_prog,
+                        cancel_check=lambda: self._conv_cancel_requested,
                     )
-                    self.conv_start_btn.configure(state="normal")
+                    self._converter_output_file = out_path
+                    success_count += 1
+                    self._converter_file_statuses[file_path] = "✓ Converted"
+
+                    def mark_done(fp=file_path):
+                        lbl = self._converter_file_badge_labels.get(fp)
+                        if lbl and lbl.winfo_exists():
+                            lbl.configure(text="✓ Converted", text_color="#10B981")
+                    self.after(0, mark_done)
+
+                except InterruptedError:
+                    cancelled = True
+                    self._converter_file_statuses[file_path] = "Cancelled"
+                    def mark_cancel(fp=file_path):
+                        lbl = self._converter_file_badge_labels.get(fp)
+                        if lbl and lbl.winfo_exists():
+                            lbl.configure(text="Cancelled", text_color=MUTED)
+                    self.after(0, mark_cancel)
+                    break
+                except Exception as exc:
+                    err_count += 1
+                    self._converter_file_statuses[file_path] = "❌ Error"
+                    def mark_err(fp=file_path):
+                        lbl = self._converter_file_badge_labels.get(fp)
+                        if lbl and lbl.winfo_exists():
+                            lbl.configure(text="❌ Error", text_color="#EF4444")
+                    self.after(0, mark_err)
+
+            def on_all_done():
+                self._conv_is_running = False
+                self.conv_start_btn.configure(state="normal")
+                self.conv_stop_btn.configure(state="disabled")
+                self.conv_clear_btn.configure(state="normal")
+                if self._converter_output_file:
                     self.conv_open_btn.configure(state="normal")
 
-                self.after(0, on_done)
-            except Exception as exc:
-                def on_err(err_text=str(exc)):
-                    self.conv_progress.set(0.0)
-                    self.conv_status_label.configure(text=f"Error during conversion: {err_text}")
-                    self.conv_start_btn.configure(state="normal")
-                    messagebox.showerror("Conversion Failed", f"Could not convert file:\n{err_text}")
+                if cancelled:
+                    self.conv_status_label.configure(
+                        text=f"Conversion cancelled by user. ({success_count} file(s) completed)"
+                    )
+                elif err_count == 0:
+                    self.conv_progress.set(1.0)
+                    if total_files == 1:
+                        self.conv_status_label.configure(
+                            text=f"✓ Conversion completed! Saved as: {Path(self._converter_output_file).name}"
+                        )
+                    else:
+                        self.conv_status_label.configure(
+                            text=f"✓ All {success_count} files converted successfully! Saved in downloads folder."
+                        )
+                else:
+                    self.conv_status_label.configure(
+                        text=f"Batch conversion completed: {success_count} succeeded, {err_count} failed."
+                    )
 
-                self.after(0, on_err)
+            self.after(0, on_all_done)
 
-        threading.Thread(target=run_thread, daemon=True).start()
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _stop_conversion(self) -> None:
+        if self._conv_is_running:
+            self._conv_cancel_requested = True
+            self.conv_status_label.configure(text="Stopping conversion… Please wait.")
+            self.conv_stop_btn.configure(state="disabled")
 
     def _open_converted_folder(self) -> None:
-        if self._converter_output_file:
+        folder = str(self.settings.resolved_download_folder())
+        if self._converter_output_file and Path(self._converter_output_file).parent.is_dir():
             folder = str(Path(self._converter_output_file).parent)
-            try:
-                os.startfile(folder)
-            except Exception:
-                pass
+        try:
+            os.startfile(folder)
+        except Exception:
+            pass
 
     def _build_channel_hub_page(self) -> None:
         self.channel_hub_page = ctk.CTkFrame(self.content, fg_color="transparent")

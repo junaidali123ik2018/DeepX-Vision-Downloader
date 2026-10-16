@@ -15,13 +15,28 @@ RESOLUTION_MAP = {
     "8K (4320p)": 4320,
     "4K (2160p)": 2160,
     "2K / 1440p": 1440,
+    "1080p (Full HD)": 1080,
     "1080p": 1080,
+    "720p (HD)": 720,
     "720p": 720,
+    "480p (SD)": 480,
     "480p": 480,
     "360p": 360,
     "240p": 240,
     "144p": 144,
 }
+
+
+def get_subprocess_windowless_kwargs() -> dict:
+    """Returns creationflags and startupinfo to ensure no CMD or console window appears on Windows."""
+    kwargs: dict = {}
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        kwargs["startupinfo"] = startupinfo
+    return kwargs
 
 
 def get_ffmpeg_path() -> str | None:
@@ -38,7 +53,14 @@ def get_video_resolution(filepath: str) -> tuple[int, int] | None:
         return None
     try:
         cmd = [ffmpeg, "-i", filepath]
-        res = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True, errors="replace")
+        res = subprocess.run(
+            cmd,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            **get_subprocess_windowless_kwargs(),
+        )
         match = re.search(r"Video:.*?, (\d{2,5})x(\d{2,5})", res.stderr)
         if match:
             return int(match.group(1)), int(match.group(2))
@@ -54,7 +76,14 @@ def get_video_duration(filepath: str) -> float | None:
         return None
     try:
         cmd = [ffmpeg, "-i", filepath]
-        res = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True, errors="replace")
+        res = subprocess.run(
+            cmd,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            **get_subprocess_windowless_kwargs(),
+        )
         match = re.search(r"Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)", res.stderr)
         if match:
             h, m, s = float(match.group(1)), float(match.group(2)), float(match.group(3))
@@ -70,6 +99,7 @@ def convert_media(
     target_format: str,
     target_resolution: str | None = None,
     on_progress: Callable[[float, str], None] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> str:
     """Converts input media to target format and resolution with progress callbacks."""
     ffmpeg = get_ffmpeg_path()
@@ -84,15 +114,59 @@ def convert_media(
     out_folder.mkdir(parents=True, exist_ok=True)
 
     # Determine extension and codec flags
-    fmt = target_format.upper().replace(" ", "_")
+    clean_fmt = target_format.split("(")[0].strip()
+    fmt = clean_fmt.upper().replace(" ", "_").replace("-", "_")
+
+    if "IPHONE" in fmt or "IPAD" in fmt:
+        fmt = "IPHONE/IPOD"
+    elif "ANDROID" in fmt:
+        fmt = "ANDROID_PHONE"
+
     audio_only = False
     vcodec = "libx264"
     acodec = "aac"
     ext = ".mp4"
     extra_args: list[str] = []
 
+    # Audio Formats
+    if fmt in {"MP3", "ORIGINAL_AUDIO"} or "MP3" in fmt or "AUDIO" in fmt:
+        audio_only = True
+        ext = ".mp3"
+        acodec = "libmp3lame"
+        extra_args.extend(["-b:a", "192k"])
+    elif fmt == "M4A":
+        audio_only = True
+        ext = ".m4a"
+        acodec = "aac"
+        extra_args.extend(["-b:a", "192k"])
+    elif fmt == "WAV":
+        audio_only = True
+        ext = ".wav"
+        acodec = "pcm_s16le"
+    elif fmt == "AAC":
+        audio_only = True
+        ext = ".aac"
+        acodec = "aac"
+        extra_args.extend(["-b:a", "192k"])
+    elif fmt == "FLAC":
+        audio_only = True
+        ext = ".flac"
+        acodec = "flac"
+    elif fmt == "OGG":
+        audio_only = True
+        ext = ".ogg"
+        acodec = "libvorbis"
+    elif fmt == "AIFF":
+        audio_only = True
+        ext = ".aiff"
+        acodec = "pcm_s16be"
+    elif fmt == "MKA":
+        audio_only = True
+        ext = ".mka"
+        acodec = "aac"
+
     # Video Formats
-    if fmt in {"MP4", "ORIGINAL_VIDEO"}:
+    elif fmt in {"MP4", "ORIGINAL_VIDEO"}:
         ext = ".mp4"
         vcodec = "libx264"
         acodec = "aac"
@@ -128,51 +202,19 @@ def convert_media(
         ext = ".3gp"
         vcodec = "h263"
         acodec = "aac"
-    elif fmt in {"IPHONE/IPOD", "IPAD"}:
+    elif fmt == "IPHONE/IPOD":
         ext = ".mp4"
         vcodec = "libx264"
         acodec = "aac"
         extra_args.extend(["-profile:v", "main", "-level", "3.1"])
-    elif fmt in {"ANDROID_PHONE", "ANDROID_TABLETS"}:
+    elif fmt == "ANDROID_PHONE":
         ext = ".mp4"
         vcodec = "libx264"
         acodec = "aac"
-
-    # Audio Formats
-    elif fmt in {"MP3", "ORIGINAL_AUDIO"}:
-        audio_only = True
-        ext = ".mp3"
-        acodec = "libmp3lame"
-        extra_args.extend(["-b:a", "192k"])
-    elif fmt == "M4A":
-        audio_only = True
-        ext = ".m4a"
-        acodec = "aac"
-        extra_args.extend(["-b:a", "192k"])
-    elif fmt == "WAV":
-        audio_only = True
-        ext = ".wav"
-        acodec = "pcm_s16le"
-    elif fmt == "AAC":
-        audio_only = True
-        ext = ".aac"
-        acodec = "aac"
-        extra_args.extend(["-b:a", "192k"])
-    elif fmt == "FLAC":
-        audio_only = True
-        ext = ".flac"
-        acodec = "flac"
-    elif fmt == "OGG":
-        audio_only = True
-        ext = ".ogg"
-        acodec = "libvorbis"
-    elif fmt == "AIFF":
-        audio_only = True
-        ext = ".aiff"
-        acodec = "pcm_s16be"
-    elif fmt == "MKA":
-        audio_only = True
-        ext = ".mka"
+    else:
+        # Default fallback to MP4
+        ext = ".mp4"
+        vcodec = "libx264"
         acodec = "aac"
 
     # Target output filename
@@ -221,13 +263,14 @@ def convert_media(
     if on_progress:
         on_progress(0.05, f"Converting to {target_format}…")
 
-    # Run FFmpeg process
+    # Run FFmpeg process windowless
     proc = subprocess.Popen(
         cmd_with_prog,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         errors="replace",
+        **get_subprocess_windowless_kwargs(),
     )
 
     stderr_lines = []
@@ -240,12 +283,28 @@ def convert_media(
 
     if proc.stdout:
         for line in proc.stdout:
-            if on_progress and total_us:
+            if cancel_check and cancel_check():
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                if output_path.exists():
+                    try:
+                        output_path.unlink()
+                    except Exception:
+                        pass
+                raise InterruptedError("Conversion cancelled by user.")
+
+            if on_progress:
                 m = re.search(r"out_time_us=(\d+)", line)
-                if m:
+                if m and total_us and total_us > 0:
                     us = int(m.group(1))
                     pct = min(0.99, max(0.05, us / total_us))
                     on_progress(pct, f"Converting to {target_format} ({int(pct*100)}%)…")
+                elif m and not total_us:
+                    us = int(m.group(1))
+                    sec_done = us / 1_000_000
+                    on_progress(0.5, f"Converting to {target_format} ({sec_done:.1f}s processed)…")
 
     proc.wait()
     err_t.join(timeout=1.0)
@@ -303,6 +362,7 @@ def upscale_video_to_resolution(
         stderr=subprocess.PIPE,
         text=True,
         errors="replace",
+        **get_subprocess_windowless_kwargs(),
     )
 
     if proc.stdout:
