@@ -30,6 +30,56 @@ def parse_tiktok_playlist_url(url: str) -> tuple[str, str | None]:
     return url, None
 
 
+def fetch_tiktok_user_secuid(username_or_url: str) -> tuple[str | None, str | None, str | None, int | None]:
+    """
+    Fetches the TikTok secondary user ID (secUid) and profile info for a TikTok creator.
+    Uses mobile browser emulation to bypass TikTok anti-bot / 403 blocks.
+    Returns: (sec_uid, nickname, avatar_url, video_count)
+    """
+    clean_user = username_or_url.strip()
+    m = re.search(r"tiktok\.com/@([^/?#]+)", clean_user)
+    if m:
+        clean_user = m.group(1)
+    clean_user = clean_user.lstrip("@").strip().rstrip("/")
+    if not clean_user:
+        return None, None, None, None
+
+    url = f"https://www.tiktok.com/@{clean_user}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        import json
+        import requests
+        r = requests.get(url, headers=headers, timeout=12)
+        if r.status_code == 200:
+            m_data = re.search(r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', r.text, re.DOTALL)
+            if m_data:
+                data = json.loads(m_data.group(1))
+                scope = data.get("__DEFAULT_SCOPE__", {})
+                user_detail = scope.get("webapp.user-detail", {})
+                user_info = user_detail.get("userInfo", {})
+                user = user_info.get("user", {})
+                stats = user_info.get("stats", {})
+                sec_uid = user.get("secUid")
+                nickname = user.get("nickname") or user.get("uniqueId") or clean_user
+                avatar = user.get("avatarLarger") or user.get("avatarMedium") or user.get("avatarThumb")
+                v_count = stats.get("videoCount")
+                if sec_uid:
+                    return sec_uid, nickname, avatar, v_count
+
+            # Fallback regex search
+            m_sec = re.search(r'"secUid":"([^"]+)"', r.text)
+            if m_sec:
+                return m_sec.group(1), clean_user, None, None
+    except Exception as ex:
+        print(f"[DeepX] TikTok secUid fetch notice: {ex}", flush=True)
+
+    return None, None, None, None
+
+
 def normalize_channel_url(url: str, mode: str = "videos") -> str:
     """
     Normalizes YouTube or TikTok URLs based on mode:
@@ -189,6 +239,19 @@ def fetch_playlist_info(
     else:
         norm_url = normalize_channel_url(url, mode="videos" if mode == "all_videos" else "playlists" if mode == "all_playlists" else "auto")
 
+    tiktok_username = None
+    if "tiktok.com/@" in norm_url and "/video/" not in norm_url and "/photo/" not in norm_url:
+        m_tt = re.search(r"tiktok\.com/@([^/?#]+)", norm_url)
+        if m_tt:
+            tiktok_username = m_tt.group(1).strip()
+            if progress_callback:
+                progress_callback(f"Resolving TikTok creator @{tiktok_username}...")
+            sec_uid, tt_title, tt_avatar, tt_count = fetch_tiktok_user_secuid(tiktok_username)
+            if sec_uid:
+                norm_url = f"tiktokuser:{sec_uid}"
+                if not extracted_title:
+                    extracted_title = f"{tt_title} (@{tiktok_username})" if tt_title else f"TikTok: @{tiktok_username}"
+
     ydl_opts = {
         "extract_flat": "in_playlist",
         "quiet": True,
@@ -216,8 +279,15 @@ def fetch_playlist_info(
     def _parse_entry(e, default_media_type="video") -> dict | None:
         v_url = e.get("url")
         v_id = e.get("id")
-        is_short = default_media_type == "short" or "/shorts/" in str(v_url or "")
-        if v_url and not v_url.startswith("http"):
+        uploader = e.get("uploader") or tiktok_username or ""
+        is_tiktok = bool(tiktok_username) or "tiktok" in str(v_url or "").lower() or str(v_url or "").startswith("tiktok")
+        is_short = default_media_type == "short" or "/shorts/" in str(v_url or "") or is_tiktok
+
+        if tiktok_username and v_id:
+            v_url = f"https://www.tiktok.com/@{tiktok_username}/video/{v_id}"
+        elif uploader and v_id and is_tiktok:
+            v_url = f"https://www.tiktok.com/@{uploader}/video/{v_id}"
+        elif v_url and not v_url.startswith("http"):
             v_url = f"https://www.youtube.com/shorts/{v_url}" if is_short else f"https://www.youtube.com/watch?v={v_url}"
         elif not v_url and v_id:
             v_url = f"https://www.youtube.com/shorts/{v_id}" if is_short else f"https://www.youtube.com/watch?v={v_id}"
@@ -238,9 +308,12 @@ def fetch_playlist_info(
                     thumb_url = t
                     break
 
+        raw_title = e.get("title") or e.get("description")
+        fallback_title = "TikTok Video" if is_tiktok else ("Untitled Short" if is_short else "Untitled Video")
+
         return {
             "id": v_id or "",
-            "title": e.get("title") or ("Untitled Short" if is_short else "Untitled Video"),
+            "title": raw_title or fallback_title,
             "url": v_url,
             "duration": e.get("duration"),
             "thumbnail": thumb_url,
@@ -310,7 +383,7 @@ def fetch_playlist_info(
             if not info:
                 return extracted_title or "Unknown Playlist", []
 
-            title = extracted_title or info.get("title") or info.get("uploader") or "Playlist / Channel"
+            title = extracted_title or (f"TikTok: @{tiktok_username}" if tiktok_username else (info.get("title") or info.get("uploader") or "Playlist / Channel"))
             raw_entries = info.get("entries") or []
 
             entries = []
@@ -785,21 +858,28 @@ def fetch_channel_catalog(
         target = tiktok_profile if tiktok_profile != clean_url else clean_url
         if progress_callback:
             progress_callback("Analyzing TikTok creator profile...")
-        title, vids = fetch_playlist_info(target, max_items=0, progress_callback=progress_callback)
         m = re.search(r"tiktok\.com/@([^/?#]+)", target)
-        handle = f"@{m.group(1)}" if m else title
+        tt_user = m.group(1).strip() if m else ""
+        sec_uid, tt_nickname, tt_avatar, tt_vcount = (fetch_tiktok_user_secuid(tt_user) if tt_user else (None, None, None, None))
+
+        title, vids = fetch_playlist_info(target, max_items=0, progress_callback=progress_callback)
+        handle = f"@{tt_user}" if tt_user else (title or "TikTok Creator")
+        channel_title = tt_nickname or title or handle
         first_thumb = (vids[0].get("thumbnail_url") or vids[0].get("thumbnail")) if vids else None
+        avatar_img = tt_avatar or first_thumb
+        estimated_count = tt_vcount if tt_vcount is not None else len(vids)
+
         return {
-            "channel_title": title or handle,
-            "uploader": title or handle,
+            "channel_title": channel_title,
+            "uploader": tt_nickname or tt_user or channel_title,
             "handle": handle,
             "channel_url": target,
-            "avatar_url": first_thumb,
+            "avatar_url": avatar_img,
             "all_videos_url": target,
-            "estimated_videos": len(vids),
+            "estimated_videos": estimated_count,
             "playlists": [{
                 "id": "tiktok_all_1",
-                "title": ext_title or f"{title}'s Collection",
+                "title": ext_title or f"{channel_title}'s Collection",
                 "url": target,
                 "item_count": len(vids),
                 "thumbnail_url": first_thumb,
