@@ -2465,10 +2465,11 @@ class HQVideoDownloaderApp(ctk.CTk):
         self.channel_search_var.set(raw_val)
         self.explore_btn.configure(state="disabled")
         self.channel_hub_status.configure(text="Analyzing creator channel & playlists... Please wait.")
+        cookie_src = self.settings.authorized_accounts.get("youtube") or self.settings.authorized_accounts.get("google")
 
         def worker():
             try:
-                catalog = fetch_channel_catalog(raw_val)
+                catalog = fetch_channel_catalog(raw_val, cookies_source=cookie_src)
 
                 def on_done():
                     self.explore_btn.configure(state="normal")
@@ -3066,10 +3067,11 @@ class HQVideoDownloaderApp(ctk.CTk):
 
         self.tiktok_explore_btn.configure(state="disabled")
         self.tiktok_hub_status.configure(text="Analyzing TikTok creator & videos... Please wait.")
+        cookie_src = self.settings.authorized_accounts.get("tiktok")
 
         def worker():
             try:
-                catalog = fetch_channel_catalog(raw_val, platform="tiktok")
+                catalog = fetch_channel_catalog(raw_val, platform="tiktok", cookies_source=cookie_src)
 
                 def on_done():
                     self.tiktok_explore_btn.configure(state="normal")

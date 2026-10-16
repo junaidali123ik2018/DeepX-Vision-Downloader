@@ -760,6 +760,7 @@ def fetch_channel_catalog(
     max_playlists: int = 50,
     platform: str = "youtube",
     progress_callback: Callable[[str], None] | None = None,
+    cookies_source: str | None = None,
 ) -> dict:
     """
     Fetches full creator catalog (channel info, 'All Files' URL, and visual playlist items).
@@ -821,6 +822,28 @@ def fetch_channel_catalog(
         "no_warnings": True,
         "skip_download": True,
     }
+    if not cookies_source:
+        try:
+            from ui.browser_window import detect_platform_from_url, get_cookie_file_path
+            p_cookie = get_cookie_file_path(platform)
+            if p_cookie.is_file() and p_cookie.stat().st_size > 50:
+                cookies_source = str(p_cookie)
+            else:
+                b_cookie = get_cookie_file_path("browser")
+                if b_cookie.is_file() and b_cookie.stat().st_size > 50:
+                    cookies_source = str(b_cookie)
+        except Exception:
+            pass
+
+    if cookies_source:
+        if Path(cookies_source).is_file():
+            ydl_opts["cookiefile"] = cookies_source
+        elif ":" in cookies_source:
+            parts = cookies_source.split(":", 1)
+            ydl_opts["cookiesfrombrowser"] = (parts[0], parts[1], None, None)
+        else:
+            ydl_opts["cookiesfrombrowser"] = (cookies_source,)
+
     if max_playlists > 0:
         ydl_opts["playlist_items"] = f"1:{max_playlists}"
 
@@ -839,7 +862,17 @@ def fetch_channel_catalog(
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(playlists_url, download=False)
+            info = None
+            try:
+                info = ydl.extract_info(playlists_url, download=False)
+            except Exception:
+                pass
+            if not info or not info.get("entries"):
+                try:
+                    info = ydl.extract_info(videos_url, download=False)
+                except Exception:
+                    pass
+
             if info:
                 channel_title = info.get("title") or info.get("channel") or info.get("uploader") or channel_title
                 channel_title = re.sub(r" - (Playlists|Videos)$", "", channel_title)

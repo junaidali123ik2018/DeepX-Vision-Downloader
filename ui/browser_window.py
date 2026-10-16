@@ -793,6 +793,18 @@ class BrowserIPCServer:
         outer = self
 
         class IPCHandler(http.server.BaseHTTPRequestHandler):
+            def _send_cors_headers(self, code=200):
+                self.send_response(code)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+
+            def do_OPTIONS(self):
+                self._send_cors_headers(200)
+                self.wfile.write(b'{"status":"ok"}')
+
             def do_POST(self):
                 try:
                     content_len = int(self.headers.get("Content-Length", 0))
@@ -805,8 +817,7 @@ class BrowserIPCServer:
                         title = data.get("title", "")
                         if url and outer.on_download:
                             outer.on_download(url, cookies_path, title)
-                        self.send_response(200)
-                        self.end_headers()
+                        self._send_cors_headers(200)
                         self.wfile.write(b'{"status":"ok"}')
                         return
 
@@ -815,24 +826,21 @@ class BrowserIPCServer:
                         cookies_path = data.get("cookies_path", "")
                         if outer.on_cookies_synced:
                             outer.on_cookies_synced(platform, cookies_path)
-                        self.send_response(200)
-                        self.end_headers()
+                        self._send_cors_headers(200)
                         self.wfile.write(b'{"status":"ok"}')
                         return
 
                     elif self.path == "/focus":
                         if outer.on_focus:
                             outer.on_focus()
-                        self.send_response(200)
-                        self.end_headers()
+                        self._send_cors_headers(200)
                         self.wfile.write(b'{"status":"ok"}')
                         return
 
                 except Exception as e:
                     print(f"[IPCServer] Error handling request: {e}", flush=True)
 
-                self.send_response(400)
-                self.end_headers()
+                self._send_cors_headers(400)
                 self.wfile.write(b'{"status":"error"}')
 
             def log_message(self, format, *args):
@@ -840,6 +848,10 @@ class BrowserIPCServer:
 
         self._server = http.server.HTTPServer(("127.0.0.1", 0), IPCHandler)
         self.port = self._server.server_port
+        try:
+            (get_browser_data_dir() / "ipc_port.txt").write_text(str(self.port), encoding="utf-8")
+        except Exception:
+            pass
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
         return self.port
@@ -933,6 +945,509 @@ def sync_profile_cookies_to_files(browser_name: str = "Google Chrome") -> None:
         pass
 
 
+def ensure_browser_extension(ipc_port: int = 0) -> Path:
+    """
+    Generates or updates the DeepX Browser Helper Extension.
+    Injects 1-Click Download buttons (floating widget, in-feed cards, top bar)
+    directly into YouTube, TikTok, Instagram, Twitter, and other websites.
+    """
+    ext_dir = get_browser_data_dir() / "extension"
+    ext_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest = {
+        "manifest_version": 3,
+        "name": "DeepX Vision Downloader Helper",
+        "version": "2.5.1",
+        "description": "1-Click Download integration for DeepX Vision Downloader",
+        "permissions": ["activeTab"],
+        "content_scripts": [
+            {
+                "matches": ["*://*/*"],
+                "js": ["content.js"],
+                "run_at": "document_end"
+            }
+        ]
+    }
+
+    manifest_file = ext_dir / "manifest.json"
+    manifest_file.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+    # Read current IPC port from file if not provided
+    effective_port = ipc_port
+    if not effective_port or effective_port <= 0:
+        port_file = get_browser_data_dir() / "ipc_port.txt"
+        if port_file.is_file():
+            try:
+                effective_port = int(port_file.read_text(encoding="utf-8").strip())
+            except Exception:
+                effective_port = 0
+
+    content_js = f"""// DeepX Vision Downloader Browser Extension Helper
+(function() {{
+    if (window.__deepx_helper_injected) return;
+    window.__deepx_helper_injected = true;
+
+    const IPC_PORT = {effective_port};
+
+    function queueDownload(targetUrl) {{
+        const cleanUrl = targetUrl || window.location.href;
+        console.log('[DeepX Helper] Enqueuing download:', cleanUrl);
+
+        if (IPC_PORT > 0) {{
+            try {{
+                fetch('http://127.0.0.1:' + IPC_PORT + '/download', {{
+                    method: 'POST',
+                    mode: 'cors',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        url: cleanUrl,
+                        title: document.title,
+                        cookies_path: ''
+                    }})
+                }}).catch(() => {{}});
+            }} catch (e) {{}}
+        }}
+
+        // Copy to clipboard as reliable fallback for smart clipboard monitor
+        try {{
+            if (navigator.clipboard && navigator.clipboard.writeText) {{
+                navigator.clipboard.writeText(cleanUrl).catch(() => {{}});
+            }}
+        }} catch (e) {{}}
+
+        showToast('✓ Queued in DeepX Downloader!');
+    }}
+
+    function showToast(msg) {{
+        let toast = document.getElementById('deepx-toast-notice');
+        if (!toast) {{
+            toast = document.createElement('div');
+            toast.id = 'deepx-toast-notice';
+            toast.style.position = 'fixed';
+            toast.style.top = '56px';
+            toast.style.left = '50%';
+            toast.style.transform = 'translateX(-50%)';
+            toast.style.backgroundColor = '#10B981';
+            toast.style.color = '#FFFFFF';
+            toast.style.padding = '10px 24px';
+            toast.style.borderRadius = '24px';
+            toast.style.fontSize = '14px';
+            toast.style.fontWeight = 'bold';
+            toast.style.fontFamily = "'Times New Roman', serif";
+            toast.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.45)';
+            toast.style.zIndex = '2147483647';
+            toast.style.transition = 'all 0.3s ease';
+            document.documentElement.appendChild(toast);
+        }}
+        toast.textContent = msg;
+        toast.style.opacity = '1';
+        toast.style.display = 'block';
+        setTimeout(() => {{
+            if (toast) {{
+                toast.style.opacity = '0';
+                setTimeout(() => {{ if (toast) toast.style.display = 'none'; }}, 300);
+            }}
+        }}, 2400);
+    }}
+
+    // 1. Top Mini Navigation & Download Bar
+    function createTopControlBar() {{
+        if (document.getElementById('deepx-top-control-bar')) return;
+
+        const bar = document.createElement('div');
+        bar.id = 'deepx-top-control-bar';
+        bar.style.position = 'fixed';
+        bar.style.top = '0';
+        bar.style.left = '0';
+        bar.style.right = '0';
+        bar.style.height = '40px';
+        bar.style.backgroundColor = '#0F172A';
+        bar.style.borderBottom = '1px solid #1E293B';
+        bar.style.zIndex = '2147483646';
+        bar.style.display = 'flex';
+        bar.style.alignItems = 'center';
+        bar.style.padding = '0 12px';
+        bar.style.gap = '8px';
+        bar.style.boxShadow = '0 2px 10px rgba(0,0,0,0.35)';
+        bar.style.fontFamily = "'Times New Roman', serif";
+        bar.style.transition = 'transform 0.25s ease';
+
+        const makeNavBtn = (icon, title, onClick) => {{
+            const b = document.createElement('button');
+            b.textContent = icon;
+            b.title = title;
+            b.style.background = '#1E293B';
+            b.style.color = '#F8FAFC';
+            b.style.border = '1px solid #334155';
+            b.style.borderRadius = '6px';
+            b.style.padding = '3px 9px';
+            b.style.fontSize = '12px';
+            b.style.cursor = 'pointer';
+            b.style.transition = 'background 0.15s ease';
+            b.onmouseenter = () => {{ b.style.background = '#334155'; }};
+            b.onmouseleave = () => {{ b.style.background = '#1E293B'; }};
+            b.onclick = onClick;
+            return b;
+        }};
+
+        const backBtn = makeNavBtn('◀', 'Back', () => window.history.back());
+        const fwdBtn = makeNavBtn('▶', 'Forward', () => window.history.forward());
+        const reloadBtn = makeNavBtn('↻', 'Reload', () => window.location.reload());
+
+        const urlInput = document.createElement('input');
+        urlInput.type = 'text';
+        urlInput.value = window.location.href;
+        urlInput.style.flex = '1';
+        urlInput.style.height = '26px';
+        urlInput.style.backgroundColor = '#020617';
+        urlInput.style.color = '#F8FAFC';
+        urlInput.style.border = '1px solid #334155';
+        urlInput.style.borderRadius = '6px';
+        urlInput.style.padding = '0 10px';
+        urlInput.style.fontSize = '12px';
+        urlInput.style.fontFamily = "'Times New Roman', serif";
+        urlInput.onkeydown = (e) => {{
+            if (e.key === 'Enter') {{
+                let u = urlInput.value.trim();
+                if (u && !u.startsWith('http://') && !u.startsWith('https://')) {{
+                    u = 'https://' + u;
+                }}
+                if (u) window.location.href = u;
+            }}
+        }};
+
+        const topDlBtn = document.createElement('button');
+        topDlBtn.textContent = '⬇ Download';
+        topDlBtn.style.background = '#2563EB';
+        topDlBtn.style.color = '#FFFFFF';
+        topDlBtn.style.border = 'none';
+        topDlBtn.style.borderRadius = '6px';
+        topDlBtn.style.padding = '5px 14px';
+        topDlBtn.style.fontSize = '12px';
+        topDlBtn.style.fontWeight = 'bold';
+        topDlBtn.style.fontFamily = "'Times New Roman', serif";
+        topDlBtn.style.cursor = 'pointer';
+        topDlBtn.onclick = () => {{
+            topDlBtn.textContent = '✓ Queued!';
+            topDlBtn.style.backgroundColor = '#10B981';
+            queueDownload(window.location.href);
+            setTimeout(() => {{
+                topDlBtn.textContent = '⬇ Download';
+                topDlBtn.style.backgroundColor = '#2563EB';
+            }}, 2200);
+        }};
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.textContent = '▲';
+        toggleBtn.title = 'Hide/Show Bar';
+        toggleBtn.style.background = 'transparent';
+        toggleBtn.style.color = '#64748B';
+        toggleBtn.style.border = 'none';
+        toggleBtn.style.fontSize = '11px';
+        toggleBtn.style.cursor = 'pointer';
+        toggleBtn.style.padding = '4px 6px';
+
+        let isHidden = false;
+        toggleBtn.onclick = () => {{
+            isHidden = !isHidden;
+            bar.style.transform = isHidden ? 'translateY(-34px)' : 'translateY(0)';
+            toggleBtn.textContent = isHidden ? '▼' : '▲';
+        }};
+
+        bar.appendChild(backBtn);
+        bar.appendChild(fwdBtn);
+        bar.appendChild(reloadBtn);
+        bar.appendChild(urlInput);
+        bar.appendChild(topDlBtn);
+        bar.appendChild(toggleBtn);
+
+        document.documentElement.appendChild(bar);
+
+        let lastLoc = window.location.href;
+        setInterval(() => {{
+            if (window.location.href !== lastLoc) {{
+                lastLoc = window.location.href;
+                urlInput.value = lastLoc;
+            }}
+        }}, 800);
+    }}
+
+    // 2. Sleek Floating Action Download Widget (Video + Audio)
+    function createFloatingWidget() {{
+        if (document.getElementById('deepx-floating-btn')) return;
+
+        const container = document.createElement('div');
+        container.id = 'deepx-floating-btn';
+        container.style.position = 'fixed';
+        container.style.bottom = '26px';
+        container.style.right = '26px';
+        container.style.zIndex = '2147483647';
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.gap = '6px';
+        container.style.backgroundColor = 'rgba(15, 23, 42, 0.95)';
+        container.style.border = '1px solid #1E293B';
+        container.style.padding = '6px';
+        container.style.borderRadius = '32px';
+        container.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.45)';
+        container.style.fontFamily = "'Times New Roman', serif";
+        container.style.userSelect = 'none';
+
+        // Main Video Download Button
+        const videoBtn = document.createElement('div');
+        videoBtn.textContent = '⬇ Download Video';
+        videoBtn.style.backgroundColor = '#2563EB';
+        videoBtn.style.color = '#FFFFFF';
+        videoBtn.style.padding = '8px 16px';
+        videoBtn.style.borderRadius = '20px';
+        videoBtn.style.fontSize = '13px';
+        videoBtn.style.fontWeight = 'bold';
+        videoBtn.style.cursor = 'pointer';
+        videoBtn.style.transition = 'all 0.15s ease';
+
+        videoBtn.onmouseenter = () => {{ videoBtn.style.backgroundColor = '#1D4ED8'; }};
+        videoBtn.onmouseleave = () => {{
+            if (videoBtn.dataset.active !== 'true') videoBtn.style.backgroundColor = '#2563EB';
+        }};
+
+        videoBtn.onclick = (e) => {{
+            e.preventDefault();
+            e.stopPropagation();
+            videoBtn.dataset.active = 'true';
+            videoBtn.textContent = '✓ Queued!';
+            videoBtn.style.backgroundColor = '#10B981';
+            queueDownload(window.location.href);
+
+            setTimeout(() => {{
+                videoBtn.dataset.active = 'false';
+                videoBtn.textContent = '⬇ Download Video';
+                videoBtn.style.backgroundColor = '#2563EB';
+            }}, 2400);
+        }};
+
+        // Audio MP3 Download Button
+        const audioBtn = document.createElement('div');
+        audioBtn.textContent = '🎵 MP3';
+        audioBtn.title = 'Download Audio Only (MP3)';
+        audioBtn.style.backgroundColor = '#059669';
+        audioBtn.style.color = '#FFFFFF';
+        audioBtn.style.padding = '8px 12px';
+        audioBtn.style.borderRadius = '20px';
+        audioBtn.style.fontSize = '13px';
+        audioBtn.style.fontWeight = 'bold';
+        audioBtn.style.cursor = 'pointer';
+        audioBtn.style.transition = 'all 0.15s ease';
+
+        audioBtn.onmouseenter = () => {{ audioBtn.style.backgroundColor = '#047857'; }};
+        audioBtn.onmouseleave = () => {{
+            if (audioBtn.dataset.active !== 'true') audioBtn.style.backgroundColor = '#059669';
+        }};
+
+        audioBtn.onclick = (e) => {{
+            e.preventDefault();
+            e.stopPropagation();
+            audioBtn.dataset.active = 'true';
+            audioBtn.textContent = '✓ MP3 Queued!';
+            audioBtn.style.backgroundColor = '#10B981';
+            queueDownload(window.location.href);
+
+            setTimeout(() => {{
+                audioBtn.dataset.active = 'false';
+                audioBtn.textContent = '🎵 MP3';
+                audioBtn.style.backgroundColor = '#059669';
+            }}, 2400);
+        }};
+
+        container.appendChild(videoBtn);
+        container.appendChild(audioBtn);
+        document.documentElement.appendChild(container);
+    }}
+
+    // 2. In-Feed Quick Download Buttons for Cards
+    function injectCardButtons() {{
+        // YouTube Cards
+        if (window.location.hostname.includes('youtube.com')) {{
+            const ytTargets = document.querySelectorAll(
+                'a.ytLockupViewModelContentImage, a#thumbnail, ytd-thumbnail, ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer, ytd-reel-item-renderer, a[href*="/watch?v="]:has(img), a[href*="/shorts/"]:has(img)'
+            );
+            for (let i = 0; i < ytTargets.length; i++) {{
+                const target = ytTargets[i];
+                if (target.querySelector('.deepx-card-dl-btn')) continue;
+
+                const r = target.getBoundingClientRect();
+                if (r.width < 70 || r.height < 40) continue;
+
+                let linkHref = target.href || (target.querySelector('a') ? target.querySelector('a').href : '');
+                if (!linkHref && target.closest) {{
+                    const pLink = target.closest('a[href*="/watch"], a[href*="/shorts/"]');
+                    if (pLink) linkHref = pLink.href;
+                }}
+                if (!linkHref) continue;
+
+                let cleanUrl = linkHref;
+                if (cleanUrl.includes('video_id=')) {{
+                    const match = cleanUrl.match(/video_id=([a-zA-Z0-9_-]{{11}})/);
+                    if (match) cleanUrl = 'https://www.youtube.com/watch?v=' + match[1];
+                }}
+
+                const comp = window.getComputedStyle(target);
+                if (comp.position === 'static') target.style.position = 'relative';
+
+                const btn = document.createElement('div');
+                btn.className = 'deepx-card-dl-btn';
+                btn.textContent = '⬇ Download';
+                btn.title = 'Queue this video in DeepX Vision Downloader';
+                btn.style.position = 'absolute';
+                btn.style.bottom = '8px';
+                btn.style.right = '8px';
+                btn.style.zIndex = '999';
+                btn.style.backgroundColor = 'rgba(37, 99, 235, 0.92)';
+                btn.style.color = '#FFFFFF';
+                btn.style.padding = '4px 10px';
+                btn.style.borderRadius = '6px';
+                btn.style.fontSize = '12px';
+                btn.style.fontWeight = 'bold';
+                btn.style.fontFamily = "'Times New Roman', serif";
+                btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
+                btn.style.cursor = 'pointer';
+                btn.style.transition = 'all 0.15s ease';
+
+                btn.onclick = (e) => {{
+                    e.preventDefault();
+                    e.stopPropagation();
+                    btn.textContent = '✓ Queued!';
+                    btn.style.backgroundColor = '#10B981';
+                    queueDownload(cleanUrl);
+                    setTimeout(() => {{
+                        btn.textContent = '⬇ Download';
+                        btn.style.backgroundColor = 'rgba(37, 99, 235, 0.92)';
+                    }}, 2200);
+                }};
+
+                target.appendChild(btn);
+            }}
+        }}
+
+        // TikTok Cards
+        if (window.location.hostname.includes('tiktok.com')) {{
+            const ttTargets = document.querySelectorAll(
+                '[data-e2e="user-post-item"], [data-e2e="feed-video"], [data-e2e="recommend-list-item-container"], div[class*="DivItemContainer"]'
+            );
+            for (let j = 0; j < ttTargets.length; j++) {{
+                const target = ttTargets[j];
+                if (target.querySelector('.deepx-card-dl-btn')) continue;
+                const aTag = target.querySelector('a[href*="/video/"]');
+                if (!aTag) continue;
+
+                const comp = window.getComputedStyle(target);
+                if (comp.position === 'static') target.style.position = 'relative';
+
+                const btn = document.createElement('div');
+                btn.className = 'deepx-card-dl-btn';
+                btn.textContent = '⬇ Download';
+                btn.style.position = 'absolute';
+                btn.style.bottom = '12px';
+                btn.style.right = '12px';
+                btn.style.zIndex = '999';
+                btn.style.backgroundColor = 'rgba(37, 99, 235, 0.92)';
+                btn.style.color = '#FFFFFF';
+                btn.style.padding = '4px 10px';
+                btn.style.borderRadius = '6px';
+                btn.style.fontSize = '12px';
+                btn.style.fontWeight = 'bold';
+                btn.style.fontFamily = "'Times New Roman', serif";
+                btn.style.cursor = 'pointer';
+
+                btn.onclick = (e) => {{
+                    e.preventDefault();
+                    e.stopPropagation();
+                    btn.textContent = '✓ Queued!';
+                    btn.style.backgroundColor = '#10B981';
+                    queueDownload(aTag.href);
+                    setTimeout(() => {{
+                        btn.textContent = '⬇ Download';
+                        btn.style.backgroundColor = 'rgba(37, 99, 235, 0.92)';
+                    }}, 2200);
+                }};
+
+                target.appendChild(btn);
+            }}
+        }}
+
+        // Instagram Cards
+        if (window.location.hostname.includes('instagram.com')) {{
+            const igCards = document.querySelectorAll('a[href*="/p/"], a[href*="/reel/"]');
+            for (let k = 0; k < igCards.length; k++) {{
+                const card = igCards[k];
+                if (card.querySelector('.deepx-card-dl-btn')) continue;
+                const r = card.getBoundingClientRect();
+                if (r.width < 70 || r.height < 70) continue;
+
+                const comp = window.getComputedStyle(card);
+                if (comp.position === 'static') card.style.position = 'relative';
+
+                const btn = document.createElement('div');
+                btn.className = 'deepx-card-dl-btn';
+                btn.textContent = '⬇ Download';
+                btn.style.position = 'absolute';
+                btn.style.bottom = '8px';
+                btn.style.right = '8px';
+                btn.style.zIndex = '999';
+                btn.style.backgroundColor = 'rgba(37, 99, 235, 0.92)';
+                btn.style.color = '#FFFFFF';
+                btn.style.padding = '4px 10px';
+                btn.style.borderRadius = '6px';
+                btn.style.fontSize = '12px';
+                btn.style.fontWeight = 'bold';
+                btn.style.fontFamily = "'Times New Roman', serif";
+                btn.style.cursor = 'pointer';
+
+                btn.onclick = (e) => {{
+                    e.preventDefault();
+                    e.stopPropagation();
+                    btn.textContent = '✓ Queued!';
+                    btn.style.backgroundColor = '#10B981';
+                    queueDownload(card.href);
+                    setTimeout(() => {{
+                        btn.textContent = '⬇ Download';
+                        btn.style.backgroundColor = 'rgba(37, 99, 235, 0.92)';
+                    }}, 2200);
+                }};
+
+                card.appendChild(btn);
+            }}
+        }}
+    }}
+
+    // 3. Global Keyboard Shortcut: Alt+D or Ctrl+Shift+D
+    window.addEventListener('keydown', (e) => {{
+        if ((e.altKey && e.key.toLowerCase() === 'd') || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd')) {{
+            e.preventDefault();
+            queueDownload(window.location.href);
+        }}
+    }});
+
+    // 4. Initialize
+    function initDeepX() {{
+        createTopControlBar();
+        createFloatingWidget();
+        injectCardButtons();
+        setInterval(injectCardButtons, 1200);
+    }}
+
+    if (document.readyState === 'loading') {{
+        document.addEventListener('DOMContentLoaded', initDeepX);
+    }} else {{
+        initDeepX();
+    }}
+}})();
+"""
+
+    content_file = ext_dir / "content.js"
+    content_file.write_text(content_js, encoding="utf-8")
+    return ext_dir
+
+
 def launch_isolated_browser(
     url: str = "https://www.youtube.com",
     browser_name: str | None = None,
@@ -943,6 +1458,7 @@ def launch_isolated_browser(
     with an isolated profile stored inside the software's directory.
     - Completely unlinked from personal Chrome / profile picker.
     - Uses --app=<url> for a clean standalone window (no address bar clutter).
+    - Injects DeepX Helper extension with 1-click Download buttons and card controls.
     - Native hardware-encrypted passwords and cookies (DPAPI) stored in local profile.
     """
     clean_url = url.strip()
@@ -990,10 +1506,13 @@ def launch_isolated_browser(
         ]
     else:
         # Chromium (Chrome, Edge, Brave)
+        ext_dir = ensure_browser_extension(ipc_port or 0)
         cmd = [
             exe_path,
             f"--user-data-dir={profile_dir}",
             f"--app={clean_url}",
+            f"--load-extension={ext_dir}",
+            f"--disable-extensions-except={ext_dir}",
             "--no-first-run",
             "--no-default-browser-check",
             "--disable-features=Translate",
