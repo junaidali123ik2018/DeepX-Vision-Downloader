@@ -192,6 +192,23 @@ class HQVideoDownloaderApp(ctk.CTk):
         # Startup heartbeat & device ban check
         self.after(1500, self._init_telemetry_and_ban_check)
 
+    def _get_icon(self, filename: str, size: tuple[int, int] = (18, 18)) -> ctk.CTkImage | None:
+        if not hasattr(self, "_icons_cache"):
+            self._icons_cache = {}
+        key = (filename, size)
+        if key in self._icons_cache:
+            return self._icons_cache[key]
+        p = get_asset_path(f"assets/{filename}")
+        if p.is_file():
+            try:
+                img = Image.open(p).convert("RGBA")
+                ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=size)
+                self._icons_cache[key] = ctk_img
+                return ctk_img
+            except Exception:
+                pass
+        return None
+
     def _build_shell(self) -> None:
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -240,9 +257,12 @@ class HQVideoDownloaderApp(ctk.CTk):
         self.nav_buttons = {}
 
         # 1. Primary Dashboard Nav Item
+        dash_icon = self._get_icon("nav_dashboard.png", (18, 18))
         btn_dash = ctk.CTkButton(
             self.sidebar,
-            text=" ⚡   Dashboard",
+            image=dash_icon,
+            compound="left",
+            text="  Dashboard",
             anchor="w",
             height=38,
             corner_radius=8,
@@ -265,18 +285,21 @@ class HQVideoDownloaderApp(ctk.CTk):
         ).pack(fill="x", padx=16, pady=(4, 2))
 
         download_items = (
-            ("downloads", "↓", "General"),
-            ("image_downloader", "🖼 🔥", "Image Downloader"),
-            ("channel_hub", "▶ 🔥", "YTB Auto-save"),
-            ("tiktok_hub", "♪ 🔥", "TikTok Auto-save"),
-            ("ig_hub", "📷 🔥", "IG Auto-save"),
-            ("x_hub", "𝕏 🔥", "X Auto-save"),
-            ("sites", "◎", "More Platforms"),
+            ("downloads", "nav_downloads.png", "  General"),
+            ("image_downloader", "nav_image.png", "  Image Downloader"),
+            ("channel_hub", "plat_youtube.png", "  YTB Auto-save"),
+            ("tiktok_hub", "plat_tiktok.png", "  TikTok Auto-save"),
+            ("ig_hub", "plat_instagram.png", "  IG Auto-save"),
+            ("x_hub", "plat_x.png", "  X Auto-save"),
+            ("sites", "nav_sites.png", "  More Platforms"),
         )
-        for key, icon, label in download_items:
+        for key, icon_file, label in download_items:
+            nav_img = self._get_icon(icon_file, (18, 18))
             button = ctk.CTkButton(
                 self.sidebar,
-                text=f" {icon}   {label}",
+                image=nav_img,
+                compound="left",
+                text=label,
                 anchor="w",
                 height=36,
                 corner_radius=8,
@@ -299,12 +322,15 @@ class HQVideoDownloaderApp(ctk.CTk):
         ).pack(fill="x", padx=16, pady=(10, 2))
 
         convert_items = (
-            ("converter", "⇄", "Video to MP3"),
+            ("converter", "nav_convert.png", "  Video to MP3"),
         )
-        for key, icon, label in convert_items:
+        for key, icon_file, label in convert_items:
+            nav_img = self._get_icon(icon_file, (18, 18))
             button = ctk.CTkButton(
                 self.sidebar,
-                text=f" {icon}   {label}",
+                image=nav_img,
+                compound="left",
+                text=label,
                 anchor="w",
                 height=36,
                 corner_radius=8,
@@ -317,17 +343,20 @@ class HQVideoDownloaderApp(ctk.CTk):
             button.pack(fill="x", padx=10, pady=1)
             self.nav_buttons[key] = button
 
-
         # Bottom Settings
+        settings_icon = self._get_icon("nav_settings.png", (18, 18))
         ctk.CTkButton(
             self.sidebar,
-            text=" ⚙   Settings",
+            image=settings_icon,
+            compound="left",
+            text="  Settings",
             anchor="w",
             height=36,
             corner_radius=8,
             fg_color="transparent",
             hover_color="#2563EB",
             text_color="#FFFFFF",
+            font=ctk.CTkFont(size=12, weight="bold"),
             command=self._open_settings_dialog,
         ).pack(side="bottom", fill="x", padx=10, pady=(6, 8))
 
@@ -1467,15 +1496,18 @@ class HQVideoDownloaderApp(ctk.CTk):
         # Pill tags showing supported platforms
         tag_frame = ctk.CTkFrame(header_row, fg_color="transparent")
         tag_frame.pack(side="right")
-        for tag_text, tag_color in [
-            ("📷 Instagram Carousels", "#EC4899"),
-            ("▶ YouTube Thumbnails", "#EF4444"),
-            ("♪ TikTok Photos", "#06B6D4"),
-            ("📌 Pinterest / Web", "#F59E0B"),
+        for tag_icon, tag_text, tag_color in [
+            ("plat_instagram.png", "Instagram Carousels", "#EC4899"),
+            ("plat_youtube.png", "YouTube Thumbnails", "#EF4444"),
+            ("plat_tiktok.png", "TikTok Photos", "#06B6D4"),
+            ("plat_pinterest.png", "Pinterest / Web", "#F59E0B"),
         ]:
+            t_icon_img = self._get_icon(tag_icon, (15, 15))
             ctk.CTkLabel(
                 tag_frame,
-                text=tag_text,
+                image=t_icon_img,
+                compound="left",
+                text=f"  {tag_text}",
                 font=ctk.CTkFont(size=10, weight="bold"),
                 text_color=tag_color,
                 fg_color=SECONDARY_BTN,
@@ -1601,12 +1633,20 @@ class HQVideoDownloaderApp(ctk.CTk):
         empty_box = ctk.CTkFrame(self.img_main_scroll, fg_color=SURFACE, corner_radius=14, border_width=1, border_color=BORDER)
         empty_box.pack(fill="both", expand=True, padx=10, pady=20)
 
-        ctk.CTkLabel(
-            empty_box,
-            text="🖼",
-            font=ctk.CTkFont(size=56),
-            text_color=BLUE,
-        ).pack(pady=(40, 12))
+        center_img = self._get_icon("nav_image.png", (64, 64))
+        if center_img:
+            ctk.CTkLabel(
+                empty_box,
+                image=center_img,
+                text="",
+            ).pack(pady=(40, 12))
+        else:
+            ctk.CTkLabel(
+                empty_box,
+                text="🖼",
+                font=ctk.CTkFont(size=56),
+                text_color=BLUE,
+            ).pack(pady=(40, 12))
 
         ctk.CTkLabel(
             empty_box,
@@ -1627,22 +1667,25 @@ class HQVideoDownloaderApp(ctk.CTk):
         guide_grid.pack(padx=30, pady=(0, 40))
 
         guides = [
-            ("📷 Instagram Carousels", "Downloads every slide from multi-photo carousel posts sequentially (01.jpg, 02.jpg...)."),
-            ("▶ YouTube Thumbnails", "Extracts the highest-resolution HD & 4K video thumbnails directly."),
-            ("♪ TikTok Photo Mode", "Grabs all original slides from TikTok photo posts and slideshows."),
-            ("📌 Pinterest & Web Images", "Supports Pinterest pins, Twitter photos, and any direct image link (.jpg, .png, .webp)."),
+            ("plat_instagram.png", "Instagram Carousels", "Downloads every slide from multi-photo carousel posts sequentially (01.jpg, 02.jpg...)."),
+            ("plat_youtube.png", "YouTube Thumbnails", "Extracts the highest-resolution HD & 4K video thumbnails directly."),
+            ("plat_tiktok.png", "TikTok Photo Mode", "Grabs all original slides from TikTok photo posts and slideshows."),
+            ("plat_pinterest.png", "Pinterest & Web Images", "Supports Pinterest pins, Twitter photos, and any direct image link (.jpg, .png, .webp)."),
         ]
 
-        for i, (g_title, g_desc) in enumerate(guides):
+        for i, (g_icon_file, g_title, g_desc) in enumerate(guides):
             col = i % 2
             row = i // 2
-            card = ctk.CTkFrame(guide_grid, corner_radius=10, fg_color=SECONDARY_BTN, width=280, height=80)
+            card = ctk.CTkFrame(guide_grid, corner_radius=10, fg_color=SECONDARY_BTN, width=280, height=84)
             card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
             card.pack_propagate(False)
 
+            g_img = self._get_icon(g_icon_file, (20, 20))
             ctk.CTkLabel(
                 card,
-                text=g_title,
+                image=g_img,
+                compound="left",
+                text=f"  {g_title}",
                 font=ctk.CTkFont(size=12, weight="bold"),
                 text_color=INK,
                 anchor="w",
@@ -2307,15 +2350,15 @@ class HQVideoDownloaderApp(ctk.CTk):
         search_card.grid_columnconfigure(1, weight=1)
 
         # Creator / YouTube logo badge
+        yt_badge_icon = self._get_icon("plat_youtube.png", (24, 24))
         badge = ctk.CTkLabel(
             search_card,
-            text=" ▶ ",
+            image=yt_badge_icon,
+            text="",
             width=38,
             height=38,
             corner_radius=10,
             fg_color=("#FEE2E2", "#3A1719"),
-            text_color="#DC2626",
-            font=ctk.CTkFont(size=16, weight="bold"),
         )
         badge.grid(row=0, column=0, padx=(16, 10), pady=12)
 
@@ -2383,12 +2426,20 @@ class HQVideoDownloaderApp(ctk.CTk):
         welcome_card = ctk.CTkFrame(self.channel_welcome_frame, corner_radius=16, fg_color=SURFACE, border_width=1, border_color=BORDER)
         welcome_card.pack(fill="x", pady=40, padx=20)
 
+        yt_center_icon = self._get_icon("plat_youtube.png", (48, 48))
+        if yt_center_icon:
+            ctk.CTkLabel(
+                welcome_card,
+                image=yt_center_icon,
+                text="",
+            ).pack(pady=(36, 0))
+
         ctk.CTkLabel(
             welcome_card,
             text="Search for your favourite creators for quick downloads!",
             text_color=INK,
             font=ctk.CTkFont(size=20, weight="bold"),
-        ).pack(pady=(36, 6))
+        ).pack(pady=(16 if yt_center_icon else 36, 6))
 
         ctk.CTkLabel(
             welcome_card,
@@ -2901,15 +2952,15 @@ class HQVideoDownloaderApp(ctk.CTk):
         search_card.grid_columnconfigure(1, weight=1)
 
         # TikTok Badge
+        tt_badge_icon = self._get_icon("plat_tiktok.png", (24, 24))
         badge = ctk.CTkLabel(
             search_card,
-            text=" ♪ ",
+            image=tt_badge_icon,
+            text="",
             width=38,
             height=38,
             corner_radius=10,
             fg_color=("#E0F2FE", "#10283B"),
-            text_color="#0284C7",
-            font=ctk.CTkFont(size=18, weight="bold"),
         )
         badge.grid(row=0, column=0, padx=(16, 10), pady=12)
 
@@ -2977,12 +3028,20 @@ class HQVideoDownloaderApp(ctk.CTk):
         welcome_card = ctk.CTkFrame(self.tiktok_welcome_frame, corner_radius=16, fg_color=SURFACE, border_width=1, border_color=BORDER)
         welcome_card.pack(fill="x", pady=40, padx=20)
 
+        tt_center_icon = self._get_icon("plat_tiktok.png", (48, 48))
+        if tt_center_icon:
+            ctk.CTkLabel(
+                welcome_card,
+                image=tt_center_icon,
+                text="",
+            ).pack(pady=(36, 0))
+
         ctk.CTkLabel(
             welcome_card,
             text="Explore & Download TikTok Creators & Collections",
             text_color=INK,
             font=ctk.CTkFont(size=20, weight="bold"),
-        ).pack(pady=(36, 6))
+        ).pack(pady=(16 if tt_center_icon else 36, 6))
 
         ctk.CTkLabel(
             welcome_card,
@@ -3239,15 +3298,15 @@ class HQVideoDownloaderApp(ctk.CTk):
         search_card.grid_columnconfigure(1, weight=1)
 
         # Instagram Badge
+        ig_badge_icon = self._get_icon("plat_instagram.png", (24, 24))
         badge = ctk.CTkLabel(
             search_card,
-            text=" 📷 ",
+            image=ig_badge_icon,
+            text="",
             width=38,
             height=38,
             corner_radius=10,
             fg_color=("#FCE7F3", "#3B1527"),
-            text_color="#DB2777",
-            font=ctk.CTkFont(size=18, weight="bold"),
         )
         badge.grid(row=0, column=0, padx=(16, 10), pady=10)
 
@@ -3323,15 +3382,15 @@ class HQVideoDownloaderApp(ctk.CTk):
         self.ig_welcome_frame = ctk.CTkFrame(self.ig_main_container, corner_radius=14, fg_color=SURFACE, border_width=1, border_color=BORDER)
         self.ig_welcome_frame.grid(row=0, column=0, sticky="nsew")
 
+        ig_center_icon = self._get_icon("plat_instagram.png", (48, 48))
         ctk.CTkLabel(
             self.ig_welcome_frame,
-            text="📷",
+            image=ig_center_icon,
+            text="",
             width=70,
             height=70,
             corner_radius=22,
             fg_color=("#FCE7F3", "#3B1527"),
-            text_color="#DB2777",
-            font=ctk.CTkFont(size=36, weight="bold"),
         ).pack(pady=(70, 14))
 
         ctk.CTkLabel(
@@ -3623,15 +3682,15 @@ class HQVideoDownloaderApp(ctk.CTk):
         search_card.grid_columnconfigure(1, weight=1)
 
         # X Badge
+        x_badge_icon = self._get_icon("plat_x.png", (24, 24))
         badge = ctk.CTkLabel(
             search_card,
-            text=" 𝕏 ",
+            image=x_badge_icon,
+            text="",
             width=38,
             height=38,
             corner_radius=10,
             fg_color=("#F1F5F9", "#1E293B"),
-            text_color="#FFFFFF",
-            font=ctk.CTkFont(size=18, weight="bold"),
         )
         badge.grid(row=0, column=0, padx=(16, 10), pady=10)
 
@@ -3705,12 +3764,20 @@ class HQVideoDownloaderApp(ctk.CTk):
         w_card = ctk.CTkFrame(welcome_frame, corner_radius=16, fg_color=SURFACE, border_width=1, border_color=BORDER)
         w_card.pack(fill="x", pady=40, padx=20)
 
+        x_center_icon = self._get_icon("plat_x.png", (48, 48))
+        if x_center_icon:
+            ctk.CTkLabel(
+                w_card,
+                image=x_center_icon,
+                text="",
+            ).pack(pady=(36, 0))
+
         ctk.CTkLabel(
             w_card,
             text="Download media directly from X (Twitter) creators!",
             text_color=INK,
             font=ctk.CTkFont(size=20, weight="bold"),
-        ).pack(pady=(36, 6))
+        ).pack(pady=(16 if x_center_icon else 36, 6))
 
         ctk.CTkLabel(
             w_card,
