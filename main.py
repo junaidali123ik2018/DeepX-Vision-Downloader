@@ -42,10 +42,13 @@ def main() -> None:
             except Exception:
                 pass
         if "--test-mode" in sys.argv:
-            auto_close = 4.0
+            from ui.browser_window import launch_browser
+            launch_browser(initial_url=url, ipc_port=ipc_port, auto_close_after=4.0)
+            return
 
-        from ui.browser_window import launch_browser
-        launch_browser(initial_url=url, ipc_port=ipc_port, auto_close_after=auto_close)
+        settings = SettingsStore().load()
+        from ui.browser_window import launch_isolated_browser
+        launch_isolated_browser(url, browser_name=getattr(settings, "preferred_browser", "Google Chrome"), ipc_port=ipc_port)
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "--ig-extract":

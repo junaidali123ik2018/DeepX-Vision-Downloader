@@ -21,6 +21,7 @@ class AppSettings:
     run_in_background: bool = False
     display_floating_window: bool = False
     monitor_clipboard: bool = True
+    preferred_browser: str = "Google Chrome"
     authorized_accounts: dict[str, str] = field(default_factory=dict)
 
     def resolved_download_folder(self) -> Path:
@@ -66,6 +67,7 @@ class SettingsStore:
                 run_in_background=bool(raw.get("run_in_background", False)),
                 display_floating_window=bool(raw.get("display_floating_window", False)),
                 monitor_clipboard=bool(raw.get("monitor_clipboard", True)),
+                preferred_browser=str(raw.get("preferred_browser", "Google Chrome")),
                 authorized_accounts=dict(raw.get("authorized_accounts", {})),
             )
         except (OSError, ValueError, TypeError, json.JSONDecodeError):

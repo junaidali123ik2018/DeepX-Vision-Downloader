@@ -222,6 +222,82 @@ class SettingsDialog(ctk.CTkToplevel):
             command=self._save_basic,
         ).pack(anchor="w", padx=16, pady=(6, 16))
 
+        # Browser Engine Configuration (Dedicated Isolated App Profile)
+        browser_card = ctk.CTkFrame(page, fg_color="#1E293B", corner_radius=10)
+        browser_card.pack(fill="x", pady=6)
+
+        header_row = ctk.CTkFrame(browser_card, fg_color="transparent")
+        header_row.pack(fill="x", padx=16, pady=(12, 4))
+        ctk.CTkLabel(
+            header_row,
+            text="🌐 In-App Browser Engine",
+            text_color="#F8FAFC",
+            font=ctk.CTkFont(family="Times New Roman", size=13, weight="bold"),
+        ).pack(side="left")
+
+        # Detect installed browsers
+        from ui.browser_window import get_installed_browsers, launch_isolated_browser
+        installed_dict = get_installed_browsers()
+        browser_names = list(installed_dict.keys())
+        if not browser_names:
+            browser_names = ["Google Chrome", "Microsoft Edge", "Brave Browser", "Mozilla Firefox"]
+
+        curr_pref = getattr(self.settings, "preferred_browser", "Google Chrome")
+        if curr_pref not in browser_names and browser_names:
+            curr_pref = browser_names[0]
+
+        self.browser_var = ctk.StringVar(value=curr_pref)
+
+        sel_row = ctk.CTkFrame(browser_card, fg_color="transparent")
+        sel_row.pack(fill="x", padx=16, pady=(4, 6))
+
+        ctk.CTkLabel(
+            sel_row,
+            text="Select Browser:",
+            text_color="#94A3B8",
+            font=ctk.CTkFont(family="Times New Roman", size=12),
+        ).pack(side="left")
+
+        browser_menu = ctk.CTkOptionMenu(
+            sel_row,
+            values=browser_names,
+            variable=self.browser_var,
+            width=180,
+            fg_color="#2D3A4F",
+            button_color="#3B82F6",
+            font=ctk.CTkFont(family="Times New Roman", size=12, weight="bold"),
+            command=self._on_browser_changed,
+        )
+        browser_menu.pack(side="right")
+
+        # Test launch row
+        def _test_launch():
+            chosen = self.browser_var.get()
+            launch_isolated_browser("https://www.youtube.com", browser_name=chosen)
+
+        test_row = ctk.CTkFrame(browser_card, fg_color="transparent")
+        test_row.pack(fill="x", padx=16, pady=(2, 12))
+
+        ctk.CTkLabel(
+            test_row,
+            text="🔒 Isolated Profile: Encrypted locally, 100% separate from personal browser.",
+            text_color="#64748B",
+            font=ctk.CTkFont(family="Times New Roman", size=11, slant="italic"),
+            wraplength=380,
+            justify="left",
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            test_row,
+            text="Test Launch",
+            width=90,
+            height=28,
+            fg_color="#334155",
+            hover_color="#475569",
+            font=ctk.CTkFont(family="Times New Roman", size=11),
+            command=_test_launch,
+        ).pack(side="right")
+
     def _on_theme_changed(self, new_mode: str) -> None:
         self.settings.appearance_mode = new_mode
         self._save_basic()
@@ -230,12 +306,18 @@ class SettingsDialog(ctk.CTkToplevel):
         else:
             ctk.set_appearance_mode(new_mode.lower())
 
+    def _on_browser_changed(self, new_browser: str) -> None:
+        self.settings.preferred_browser = new_browser
+        self._save_basic()
+
     def _save_basic(self) -> None:
         self.settings.display_floating_window = self.float_var.get()
         self.settings.run_in_background = self.bg_var.get()
         self.settings.monitor_clipboard = self.clip_var.get()
         if hasattr(self, "theme_var"):
             self.settings.appearance_mode = self.theme_var.get()
+        if hasattr(self, "browser_var"):
+            self.settings.preferred_browser = self.browser_var.get()
         self.on_save(self.settings)
 
     def _build_download_tab(self) -> None:
@@ -505,9 +587,8 @@ class SettingsDialog(ctk.CTkToplevel):
             port = None
             if hasattr(self, "main_app") and hasattr(self.main_app, "ipc_server") and self.main_app.ipc_server:
                 port = self.main_app.ipc_server.port
-            elif hasattr(self.master, "ipc_server") and self.master.ipc_server:
-                port = self.master.ipc_server.port
-            BrowserManager.open_browser(target_url, port)
+            preferred = getattr(self.settings, "preferred_browser", "Google Chrome")
+            BrowserManager.open_browser(target_url, port, browser_name=preferred)
             choice_win.destroy()
             messagebox.showinfo(
                 "Browser Opened",

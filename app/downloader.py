@@ -366,6 +366,9 @@ class DownloadManager:
         if cookie_src:
             if Path(cookie_src).is_file():
                 options["cookiefile"] = cookie_src
+            elif ":" in cookie_src:
+                parts = cookie_src.split(":", 1)
+                options["cookiesfrombrowser"] = (parts[0], parts[1], None, None)
             else:
                 options["cookiesfrombrowser"] = (cookie_src,)
 

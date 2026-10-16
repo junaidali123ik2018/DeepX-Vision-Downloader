@@ -3995,7 +3995,8 @@ class HQVideoDownloaderApp(ctk.CTk):
         if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
             clean_url = f"https://{clean_url}"
         port = self.ipc_server.port if hasattr(self, "ipc_server") and self.ipc_server else None
-        BrowserManager.open_browser(clean_url, port)
+        preferred = getattr(self.settings, "preferred_browser", "Google Chrome")
+        BrowserManager.open_browser(clean_url, port, browser_name=preferred)
 
     def _on_browser_focus_requested(self) -> None:
         def _focus():

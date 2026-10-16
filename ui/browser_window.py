@@ -853,37 +853,188 @@ class BrowserIPCServer:
                 pass
 
 
+def get_installed_browsers() -> dict[str, str]:
+    """
+    Scans Windows system locations to detect installed browsers.
+    Returns a dict mapping browser name to executable path.
+    Supported browsers: Google Chrome, Microsoft Edge, Brave Browser, Mozilla Firefox.
+    """
+    local = os.environ.get("LOCALAPPDATA", "")
+    prog_files = os.environ.get("ProgramFiles", "C:\\Program Files")
+    prog_files_x86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
+
+    candidates = {
+        "Google Chrome": [
+            Path(prog_files) / "Google" / "Chrome" / "Application" / "chrome.exe",
+            Path(prog_files_x86) / "Google" / "Chrome" / "Application" / "chrome.exe",
+            Path(local) / "Google" / "Chrome" / "Application" / "chrome.exe",
+        ],
+        "Microsoft Edge": [
+            Path(prog_files_x86) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+            Path(prog_files) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+            Path(local) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+        ],
+        "Brave Browser": [
+            Path(prog_files) / "BraveSoftware" / "Brave-Browser" / "Application" / "brave.exe",
+            Path(prog_files_x86) / "BraveSoftware" / "Brave-Browser" / "Application" / "brave.exe",
+            Path(local) / "BraveSoftware" / "Brave-Browser" / "Application" / "brave.exe",
+        ],
+        "Mozilla Firefox": [
+            Path(prog_files) / "Mozilla Firefox" / "firefox.exe",
+            Path(prog_files_x86) / "Mozilla Firefox" / "firefox.exe",
+            Path(local) / "Mozilla Firefox" / "firefox.exe",
+        ],
+    }
+
+    found: dict[str, str] = {}
+    for name, paths in candidates.items():
+        for p in paths:
+            if p.is_file():
+                found[name] = str(p)
+                break
+    return found
+
+
+def get_isolated_profile_dir(browser_name: str = "Google Chrome") -> Path:
+    """
+    Returns the dedicated, isolated profile folder for the DeepX browser engine.
+    Kept completely separate from personal browser profiles, inside LocalAppData/DeepX Vision Downloader.
+    """
+    base = get_browser_data_dir()
+    if "firefox" in browser_name.lower():
+        p_dir = base / "browser_profile_firefox"
+    else:
+        p_dir = base / "browser_profile"
+    p_dir.mkdir(parents=True, exist_ok=True)
+    return p_dir
+
+
+def sync_profile_cookies_to_files(browser_name: str = "Google Chrome") -> None:
+    """
+    Safely exports authentication cookies from the isolated profile directory
+    to Netscape format cookies_<platform>.txt files for downstream tools.
+    """
+    p_dir = get_isolated_profile_dir(browser_name)
+    b_type = "firefox" if "firefox" in browser_name.lower() else (
+        "brave" if "brave" in browser_name.lower() else (
+            "edge" if "edge" in browser_name.lower() else "chrome"
+        )
+    )
+    try:
+        from yt_dlp.cookies import extract_cookies_from_browser
+        jar = extract_cookies_from_browser(b_type, profile=str(p_dir))
+        if jar:
+            general_file = get_cookie_file_path("browser")
+            jar.save(str(general_file), ignore_discard=True, ignore_expires=True)
+            for plat in ["youtube", "instagram", "tiktok", "facebook", "x"]:
+                dest = get_cookie_file_path(plat)
+                jar.save(str(dest), ignore_discard=True, ignore_expires=True)
+    except Exception:
+        pass
+
+
+def launch_isolated_browser(
+    url: str = "https://www.youtube.com",
+    browser_name: str | None = None,
+    ipc_port: int | None = None,
+) -> subprocess.Popen | None:
+    """
+    Launches the chosen installed browser in a dedicated standalone app window
+    with an isolated profile stored inside the software's directory.
+    - Completely unlinked from personal Chrome / profile picker.
+    - Uses --app=<url> for a clean standalone window (no address bar clutter).
+    - Native hardware-encrypted passwords and cookies (DPAPI) stored in local profile.
+    """
+    clean_url = url.strip()
+    if not clean_url:
+        clean_url = "https://www.youtube.com"
+    if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
+        clean_url = f"https://{clean_url}"
+
+    installed = get_installed_browsers()
+    target_name = browser_name or "Google Chrome"
+
+    # Fallback to any installed browser if selected one is not available
+    if target_name not in installed:
+        for pref in ["Google Chrome", "Microsoft Edge", "Brave Browser", "Mozilla Firefox"]:
+            if pref in installed:
+                target_name = pref
+                break
+        else:
+            if installed:
+                target_name = next(iter(installed))
+            else:
+                target_name = None
+
+    if not target_name or target_name not in installed:
+        # Fallback to WebView2 if no standalone browser executable was found
+        print(f"[DeepX Browser] No standalone browser found, falling back to built-in webview.", flush=True)
+        try:
+            return subprocess.Popen(
+                [sys.executable, "--browser", clean_url] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).parent.parent / "main.py"), "--browser", clean_url],
+                creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0,
+            )
+        except Exception:
+            return None
+
+    exe_path = installed[target_name]
+    profile_dir = get_isolated_profile_dir(target_name)
+
+    is_firefox = "firefox" in target_name.lower()
+    if is_firefox:
+        cmd = [
+            exe_path,
+            "-profile", str(profile_dir),
+            "-no-remote",
+            clean_url,
+        ]
+    else:
+        # Chromium (Chrome, Edge, Brave)
+        cmd = [
+            exe_path,
+            f"--user-data-dir={profile_dir}",
+            f"--app={clean_url}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-features=Translate",
+            "--window-size=1280,820",
+        ]
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0,
+        )
+
+        def _bg_sync():
+            time.sleep(6)
+            sync_profile_cookies_to_files(target_name)
+
+        threading.Thread(target=_bg_sync, daemon=True).start()
+        return proc
+    except Exception as ex:
+        print(f"[DeepX Browser] Failed to launch isolated {target_name}: {ex}", flush=True)
+        return None
+
+
 class BrowserManager:
-    """Manages launching browser child processes from HQVideoDownloaderApp."""
+    """Manages launching isolated browser child processes from HQVideoDownloaderApp."""
 
     _active_process: subprocess.Popen | None = None
 
     @classmethod
-    def open_browser(cls, url: str, ipc_port: int | None = None) -> None:
-        """Launches the In-App Browser in a separate process."""
-        clean_url = url.strip()
-        if not clean_url:
-            clean_url = "https://www.youtube.com"
-
-        if getattr(sys, "frozen", False):
-            # Running as compiled PyInstaller executable
-            cmd = [sys.executable, "--browser", clean_url]
-            if ipc_port:
-                cmd.extend(["--port", str(ipc_port)])
-        else:
-            # Running from source
-            main_script = str(Path(__file__).parent.parent / "main.py")
-            cmd = [sys.executable, main_script, "--browser", clean_url]
-            if ipc_port:
-                cmd.extend(["--port", str(ipc_port)])
-
-        try:
-            cls._active_process = subprocess.Popen(
-                cmd,
-                creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0,
-            )
-        except Exception as ex:
-            print(f"[BrowserManager] Failed to launch browser process: {ex}", flush=True)
+    def open_browser(
+        cls,
+        url: str,
+        ipc_port: int | None = None,
+        browser_name: str | None = None,
+    ) -> None:
+        """Launches the In-App Isolated Profile Browser in a dedicated app window."""
+        cls._active_process = launch_isolated_browser(
+            url=url,
+            browser_name=browser_name,
+            ipc_port=ipc_port,
+        )
 
 
 def extract_instagram_profile_headless(username: str) -> None:
