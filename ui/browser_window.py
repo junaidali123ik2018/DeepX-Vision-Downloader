@@ -966,7 +966,7 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
                 "matches": ["<all_urls>"],
                 "js": ["content.js"],
                 "run_at": "document_start",
-                "all_frames": false
+                "all_frames": False
             }
         ]
     }
@@ -1481,8 +1481,25 @@ def launch_isolated_browser(
     if not clean_url.startswith("http://") and not clean_url.startswith("https://"):
         clean_url = f"https://{clean_url}"
 
+    target_name = browser_name or "Built-in Browser (WebView)"
+    if "built-in" in target_name.lower() or "webview" in target_name.lower():
+        cmd = (
+            [sys.executable, "--browser", clean_url, "--engine", "Built-in Browser (WebView)"]
+            if getattr(sys, "frozen", False)
+            else [sys.executable, str(Path(__file__).parent.parent / "main.py"), "--browser", clean_url, "--engine", "Built-in Browser (WebView)"]
+        )
+        if ipc_port:
+            cmd.extend(["--ipc-port", str(ipc_port)])
+        try:
+            return subprocess.Popen(
+                cmd,
+                creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0,
+            )
+        except Exception as e:
+            print(f"[DeepX Browser] Failed to launch built-in browser: {e}", flush=True)
+            return None
+
     installed = get_installed_browsers()
-    target_name = browser_name or "Google Chrome"
 
     # Fallback to any installed browser if selected one is not available
     if target_name not in installed:
@@ -1500,8 +1517,15 @@ def launch_isolated_browser(
         # Fallback to WebView2 if no standalone browser executable was found
         print(f"[DeepX Browser] No standalone browser found, falling back to built-in webview.", flush=True)
         try:
+            cmd = (
+                [sys.executable, "--browser", clean_url, "--engine", "Built-in Browser (WebView)"]
+                if getattr(sys, "frozen", False)
+                else [sys.executable, str(Path(__file__).parent.parent / "main.py"), "--browser", clean_url, "--engine", "Built-in Browser (WebView)"]
+            )
+            if ipc_port:
+                cmd.extend(["--ipc-port", str(ipc_port)])
             return subprocess.Popen(
-                [sys.executable, "--browser", clean_url] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).parent.parent / "main.py"), "--browser", clean_url],
+                cmd,
                 creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0,
             )
         except Exception:
@@ -1568,9 +1592,9 @@ class BrowserManager:
         b_name = browser_name or "Built-in Browser (WebView)"
         if "built-in" in b_name.lower() or "webview" in b_name.lower():
             cmd = (
-                [sys.executable, "--browser", url]
+                [sys.executable, "--browser", url, "--engine", "Built-in Browser (WebView)"]
                 if getattr(sys, "frozen", False)
-                else [sys.executable, str(Path(__file__).parent.parent / "main.py"), "--browser", url]
+                else [sys.executable, str(Path(__file__).parent.parent / "main.py"), "--browser", url, "--engine", "Built-in Browser (WebView)"]
             )
             if ipc_port:
                 cmd.extend(["--ipc-port", str(ipc_port)])

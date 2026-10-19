@@ -34,10 +34,15 @@ def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "--browser":
         url = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith("--") else "https://www.youtube.com"
         ipc_port = None
-        auto_close = None
         if "--port" in sys.argv:
             try:
                 p_idx = sys.argv.index("--port")
+                ipc_port = int(sys.argv[p_idx + 1])
+            except Exception:
+                pass
+        if "--ipc-port" in sys.argv:
+            try:
+                p_idx = sys.argv.index("--ipc-port")
                 ipc_port = int(sys.argv[p_idx + 1])
             except Exception:
                 pass
@@ -46,9 +51,25 @@ def main() -> None:
             launch_browser(initial_url=url, ipc_port=ipc_port, auto_close_after=4.0)
             return
 
-        settings = SettingsStore().load()
+        target_browser = None
+        if "--engine" in sys.argv:
+            try:
+                e_idx = sys.argv.index("--engine")
+                target_browser = sys.argv[e_idx + 1]
+            except Exception:
+                pass
+
+        if not target_browser:
+            settings = SettingsStore().load()
+            target_browser = getattr(settings, "preferred_browser", "Built-in Browser (WebView)")
+
+        if "built-in" in target_browser.lower() or "webview" in target_browser.lower():
+            from ui.browser_window import launch_browser
+            launch_browser(initial_url=url, ipc_port=ipc_port)
+            return
+
         from ui.browser_window import launch_isolated_browser
-        launch_isolated_browser(url, browser_name=getattr(settings, "preferred_browser", "Google Chrome"), ipc_port=ipc_port)
+        launch_isolated_browser(url, browser_name=target_browser, ipc_port=ipc_port)
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "--ig-extract":
