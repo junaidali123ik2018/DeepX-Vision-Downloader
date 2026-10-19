@@ -1,6 +1,6 @@
 ; Script generated for DeepX Vision Downloader
 #define MyAppName "DeepX Vision Downloader"
-#define MyAppVersion "2.5.1"
+#define MyAppVersion "2.5.2"
 #define MyAppPublisher "Junaid Ali"
 #define MyAppExeName "DeepX Vision Downloader.exe"
 
@@ -13,7 +13,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=dist_installer
-OutputBaseFilename=DeepX_Vision_Downloader_Pro_Setup_v2.5.1
+OutputBaseFilename=DeepX_Vision_Downloader_Pro_Setup_v2.5.2
 SetupIconFile=assets\app_icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes

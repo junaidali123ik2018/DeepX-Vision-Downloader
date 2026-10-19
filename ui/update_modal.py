@@ -178,18 +178,27 @@ class UpdateModal(ctk.CTkToplevel):
 
     def _on_download_complete(self) -> None:
         self.prog_bar.set(1.0)
-        self.lbl_progress.configure(text="✓ Update downloaded successfully! Ready to install.", text_color="#34D399")
+        self.lbl_progress.configure(text="✓ Update downloaded! Launching installer to replace & update now…", text_color="#34D399")
         self.btn_action.configure(
-            state="normal",
-            text="🚀 Restart & Apply Update Now",
+            state="disabled",
+            text="🚀 Updating & Replacing Application…",
             fg_color="#10B981",
-            hover_color="#059669",
         )
-        self.btn_later.configure(text="Close")
+        self.btn_later.configure(state="disabled")
+
+        def _launch():
+            try:
+                if self._downloaded_file and self._downloaded_file.is_file():
+                    apply_update_and_restart(self._downloaded_file)
+            except Exception as e:
+                messagebox.showerror("Update Error", f"Could not launch installer: {e}")
+                self._reset_buttons()
+
+        self.after(900, _launch)
 
     def _reset_buttons(self) -> None:
         self.btn_action.configure(state="normal", text="⚡ Download & Install Update")
-        self.btn_later.configure(text="Remind Me Later")
+        self.btn_later.configure(state="normal", text="Remind Me Later")
 
     def _on_close(self) -> None:
         if self._download_thread and self._download_thread.is_alive():

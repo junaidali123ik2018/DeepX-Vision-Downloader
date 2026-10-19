@@ -118,22 +118,35 @@ def download_update_installer(
 def apply_update_and_restart(installer_path: Path) -> None:
     """
     Spawns a detached batch script to wait for current process to exit,
-    runs the installer silently, and relaunches the app.
+    runs the installer silently, replaces the app, and relaunches the app.
     """
     current_exe = Path(sys.executable).resolve()
     temp_dir = installer_path.parent
     bat_path = temp_dir / "run_silent_update.bat"
 
-    # Command script
     script_lines = [
         "@echo off",
         "title Updating DeepX Vision Downloader...",
+        "echo Closing old process...",
+        'taskkill /F /IM "DeepX Vision Downloader.exe" >nul 2>&1',
         "timeout /t 2 /nobreak >nul",
-        f'"{installer_path.resolve()}" /SILENT /NORESTART /CLOSEAPPLICATIONS',
-        "timeout /t 1 /nobreak >nul",
-        f'start "" "{current_exe}"',
-        f'del "{installer_path.resolve()}" 2>nul',
-        'del "%~f0" 2>nul',
+        f'echo Installing update: {installer_path.name}...',
+        f'start /wait "" "{installer_path.resolve()}" /VERYSILENT /SUPPRESSMSGBOXES /FORCECLOSEAPPLICATIONS',
+        "timeout /t 2 /nobreak >nul",
+        'echo Relaunching DeepX Vision Downloader...',
+        'set "EXE1=%LOCALAPPDATA%\\Programs\\DeepX Vision Downloader\\DeepX Vision Downloader.exe"',
+        'set "EXE2=%ProgramFiles%\\DeepX Vision Downloader\\DeepX Vision Downloader.exe"',
+        f'set "EXE3={current_exe}"',
+        'if exist "%EXE1%" (',
+        '    start "" "%EXE1%"',
+        ') else if exist "%EXE2%" (',
+        '    start "" "%EXE2%"',
+        ') else if exist "%EXE3%" (',
+        '    start "" "%EXE3%"',
+        ')',
+        "timeout /t 2 /nobreak >nul",
+        f'del "{installer_path.resolve()}" >nul 2>&1',
+        'del "%~f0" >nul 2>&1',
     ]
 
     bat_path.write_text("\n".join(script_lines), encoding="utf-8")
@@ -146,8 +159,8 @@ def apply_update_and_restart(installer_path: Path) -> None:
         creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
         close_fds=True,
     )
-    # Terminate current app cleanly
-    sys.exit(0)
+    # Terminate current app immediately so all file handles and locks are released
+    os._exit(0)
 
 
 def update_core_engine_ytdlp(on_output: Optional[Callable[[str], None]] = None) -> tuple[bool, str]:

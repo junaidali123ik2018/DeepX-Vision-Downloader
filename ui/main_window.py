@@ -4559,7 +4559,10 @@ class HQVideoDownloaderApp(ctk.CTk):
                         if has_up and manifest:
                             UpdateModal(self, manifest)
                         elif not silent_if_latest:
-                            messagebox.showinfo("DeepX Vision Downloader", msg)
+                            if manifest and messagebox.askyesno("DeepX Vision Downloader", f"{msg}\n\nDo you want to re-download and auto-install/replace version v{manifest.version} now?"):
+                                UpdateModal(self, manifest)
+                            else:
+                                messagebox.showinfo("DeepX Vision Downloader", msg)
                     except Exception:
                         pass
                 try:

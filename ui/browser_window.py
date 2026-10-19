@@ -957,14 +957,16 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
     manifest = {
         "manifest_version": 3,
         "name": "DeepX Vision Downloader Helper",
-        "version": "2.5.1",
+        "version": "2.5.2",
         "description": "1-Click Download integration for DeepX Vision Downloader",
-        "permissions": ["activeTab"],
+        "permissions": ["activeTab", "scripting"],
+        "host_permissions": ["<all_urls>"],
         "content_scripts": [
             {
-                "matches": ["*://*/*"],
+                "matches": ["<all_urls>"],
                 "js": ["content.js"],
-                "run_at": "document_end"
+                "run_at": "document_start",
+                "all_frames": false
             }
         ]
     }
@@ -1037,7 +1039,7 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
             toast.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.45)';
             toast.style.zIndex = '2147483647';
             toast.style.transition = 'all 0.3s ease';
-            document.documentElement.appendChild(toast);
+            (document.body || document.documentElement).appendChild(toast);
         }}
         toast.textContent = msg;
         toast.style.opacity = '1';
@@ -1053,6 +1055,7 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
     // 1. Top Mini Navigation & Download Bar
     function createTopControlBar() {{
         if (document.getElementById('deepx-top-control-bar')) return;
+        if (!document.body && !document.documentElement) return;
 
         const bar = document.createElement('div');
         bar.id = 'deepx-top-control-bar';
@@ -1060,15 +1063,15 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
         bar.style.top = '0';
         bar.style.left = '0';
         bar.style.right = '0';
-        bar.style.height = '40px';
+        bar.style.height = '42px';
         bar.style.backgroundColor = '#0F172A';
-        bar.style.borderBottom = '1px solid #1E293B';
-        bar.style.zIndex = '2147483646';
+        bar.style.borderBottom = '2px solid #2563EB';
+        bar.style.zIndex = '2147483647';
         bar.style.display = 'flex';
         bar.style.alignItems = 'center';
         bar.style.padding = '0 12px';
         bar.style.gap = '8px';
-        bar.style.boxShadow = '0 2px 10px rgba(0,0,0,0.35)';
+        bar.style.boxShadow = '0 4px 15px rgba(0,0,0,0.5)';
         bar.style.fontFamily = "'Times New Roman', serif";
         bar.style.transition = 'transform 0.25s ease';
 
@@ -1080,7 +1083,7 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
             b.style.color = '#F8FAFC';
             b.style.border = '1px solid #334155';
             b.style.borderRadius = '6px';
-            b.style.padding = '3px 9px';
+            b.style.padding = '4px 10px';
             b.style.fontSize = '12px';
             b.style.cursor = 'pointer';
             b.style.transition = 'background 0.15s ease';
@@ -1098,7 +1101,7 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
         urlInput.type = 'text';
         urlInput.value = window.location.href;
         urlInput.style.flex = '1';
-        urlInput.style.height = '26px';
+        urlInput.style.height = '28px';
         urlInput.style.backgroundColor = '#020617';
         urlInput.style.color = '#F8FAFC';
         urlInput.style.border = '1px solid #334155';
@@ -1117,7 +1120,7 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
         }};
 
         const topDlBtn = document.createElement('button');
-        topDlBtn.textContent = '⬇ Download';
+        topDlBtn.textContent = '⬇ Download Video';
         topDlBtn.style.background = '#2563EB';
         topDlBtn.style.color = '#FFFFFF';
         topDlBtn.style.border = 'none';
@@ -1132,7 +1135,7 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
             topDlBtn.style.backgroundColor = '#10B981';
             queueDownload(window.location.href);
             setTimeout(() => {{
-                topDlBtn.textContent = '⬇ Download';
+                topDlBtn.textContent = '⬇ Download Video';
                 topDlBtn.style.backgroundColor = '#2563EB';
             }}, 2200);
         }};
@@ -1150,7 +1153,7 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
         let isHidden = false;
         toggleBtn.onclick = () => {{
             isHidden = !isHidden;
-            bar.style.transform = isHidden ? 'translateY(-34px)' : 'translateY(0)';
+            bar.style.transform = isHidden ? 'translateY(-36px)' : 'translateY(0)';
             toggleBtn.textContent = isHidden ? '▼' : '▲';
         }};
 
@@ -1161,7 +1164,7 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
         bar.appendChild(topDlBtn);
         bar.appendChild(toggleBtn);
 
-        document.documentElement.appendChild(bar);
+        (document.body || document.documentElement).appendChild(bar);
 
         let lastLoc = window.location.href;
         setInterval(() => {{
@@ -1175,6 +1178,7 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
     // 2. Sleek Floating Action Download Widget (Video + Audio)
     function createFloatingWidget() {{
         if (document.getElementById('deepx-floating-btn')) return;
+        if (!document.body && !document.documentElement) return;
 
         const container = document.createElement('div');
         container.id = 'deepx-floating-btn';
@@ -1184,12 +1188,12 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
         container.style.zIndex = '2147483647';
         container.style.display = 'flex';
         container.style.alignItems = 'center';
-        container.style.gap = '6px';
+        container.style.gap = '8px';
         container.style.backgroundColor = 'rgba(15, 23, 42, 0.95)';
         container.style.border = '1px solid #1E293B';
         container.style.padding = '6px';
         container.style.borderRadius = '32px';
-        container.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.45)';
+        container.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.6)';
         container.style.fontFamily = "'Times New Roman', serif";
         container.style.userSelect = 'none';
 
@@ -1198,7 +1202,7 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
         videoBtn.textContent = '⬇ Download Video';
         videoBtn.style.backgroundColor = '#2563EB';
         videoBtn.style.color = '#FFFFFF';
-        videoBtn.style.padding = '8px 16px';
+        videoBtn.style.padding = '9px 18px';
         videoBtn.style.borderRadius = '20px';
         videoBtn.style.fontSize = '13px';
         videoBtn.style.fontWeight = 'bold';
@@ -1231,7 +1235,7 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
         audioBtn.title = 'Download Audio Only (MP3)';
         audioBtn.style.backgroundColor = '#059669';
         audioBtn.style.color = '#FFFFFF';
-        audioBtn.style.padding = '8px 12px';
+        audioBtn.style.padding = '9px 14px';
         audioBtn.style.borderRadius = '20px';
         audioBtn.style.fontSize = '13px';
         audioBtn.style.fontWeight = 'bold';
@@ -1260,7 +1264,7 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
 
         container.appendChild(videoBtn);
         container.appendChild(audioBtn);
-        document.documentElement.appendChild(container);
+        (document.body || document.documentElement).appendChild(container);
     }}
 
     // 2. In-Feed Quick Download Buttons for Cards
@@ -1427,12 +1431,20 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
         }}
     }});
 
-    // 4. Initialize
+    // 4. Initialize & Watch DOM mutations
     function initDeepX() {{
+        if (!document.body && !document.documentElement) {{
+            setTimeout(initDeepX, 100);
+            return;
+        }}
         createTopControlBar();
         createFloatingWidget();
         injectCardButtons();
         setInterval(injectCardButtons, 1200);
+        setInterval(() => {{
+            if (!document.getElementById('deepx-top-control-bar')) createTopControlBar();
+            if (!document.getElementById('deepx-floating-btn')) createFloatingWidget();
+        }}, 1500);
     }}
 
     if (document.readyState === 'loading') {{
@@ -1440,6 +1452,8 @@ def ensure_browser_extension(ipc_port: int = 0) -> Path:
     }} else {{
         initDeepX();
     }}
+    setTimeout(initDeepX, 400);
+    setTimeout(initDeepX, 1500);
 }})();
 """
 
@@ -1500,22 +1514,24 @@ def launch_isolated_browser(
     if is_firefox:
         cmd = [
             exe_path,
-            "-profile", str(profile_dir),
+            "-profile", str(profile_dir.resolve()),
             "-no-remote",
             clean_url,
         ]
     else:
         # Chromium (Chrome, Edge, Brave)
         ext_dir = ensure_browser_extension(ipc_port or 0)
+        ext_path = str(ext_dir.resolve()).rstrip("\\/")
         cmd = [
             exe_path,
-            f"--user-data-dir={profile_dir}",
+            f"--user-data-dir={profile_dir.resolve()}",
             f"--app={clean_url}",
-            f"--load-extension={ext_dir}",
-            f"--disable-extensions-except={ext_dir}",
+            "--enable-extensions",
+            f"--load-extension={ext_path}",
+            f"--disable-extensions-except={ext_path}",
             "--no-first-run",
             "--no-default-browser-check",
-            "--disable-features=Translate",
+            "--disable-features=Translate,OptimizationHints",
             "--window-size=1280,820",
         ]
 
@@ -1548,7 +1564,22 @@ class BrowserManager:
         ipc_port: int | None = None,
         browser_name: str | None = None,
     ) -> None:
-        """Launches the In-App Isolated Profile Browser in a dedicated app window."""
+        """Launches the chosen browser (Built-in WebView or standalone Chrome/Edge/Brave)."""
+        b_name = browser_name or "Built-in Browser (WebView)"
+        if "built-in" in b_name.lower() or "webview" in b_name.lower():
+            cmd = (
+                [sys.executable, "--browser", url]
+                if getattr(sys, "frozen", False)
+                else [sys.executable, str(Path(__file__).parent.parent / "main.py"), "--browser", url]
+            )
+            if ipc_port:
+                cmd.extend(["--ipc-port", str(ipc_port)])
+            cls._active_process = subprocess.Popen(
+                cmd,
+                creationflags=subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0,
+            )
+            return
+
         cls._active_process = launch_isolated_browser(
             url=url,
             browser_name=browser_name,

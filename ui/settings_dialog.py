@@ -236,11 +236,11 @@ class SettingsDialog(ctk.CTkToplevel):
         ).pack(side="left")
 
         # Detect installed browsers
-        from ui.browser_window import get_installed_browsers, launch_isolated_browser
+        from ui.browser_window import BrowserManager, get_installed_browsers, launch_isolated_browser
         installed_dict = get_installed_browsers()
-        browser_names = list(installed_dict.keys())
-        if not browser_names:
-            browser_names = ["Google Chrome", "Microsoft Edge", "Brave Browser", "Mozilla Firefox"]
+        browser_names = ["Built-in Browser (WebView)"] + [k for k in installed_dict.keys() if k != "Built-in Browser (WebView)"]
+        if len(browser_names) == 1:
+            browser_names.extend(["Google Chrome", "Microsoft Edge", "Brave Browser", "Mozilla Firefox"])
 
         curr_pref = getattr(self.settings, "preferred_browser", "Google Chrome")
         if curr_pref not in browser_names and browser_names:
@@ -273,7 +273,7 @@ class SettingsDialog(ctk.CTkToplevel):
         # Test launch row
         def _test_launch():
             chosen = self.browser_var.get()
-            launch_isolated_browser("https://www.youtube.com", browser_name=chosen)
+            BrowserManager.open_browser("https://www.youtube.com", browser_name=chosen)
 
         test_row = ctk.CTkFrame(browser_card, fg_color="transparent")
         test_row.pack(fill="x", padx=16, pady=(2, 12))
@@ -851,6 +851,13 @@ class SettingsDialog(ctk.CTkToplevel):
                     if has_up and manifest:
                         lbl_up_status.configure(text=f"New version v{manifest.version} available!", text_color="#10B981")
                         UpdateModal(self, manifest)
+                    elif manifest:
+                        import tkinter.messagebox as mb
+                        if mb.askyesno("Update Check", f"{msg}\n\nDo you want to re-download and auto-install/replace version v{manifest.version} now?"):
+                            lbl_up_status.configure(text=f"Launching updater for v{manifest.version}...", text_color="#10B981")
+                            UpdateModal(self, manifest)
+                        else:
+                            lbl_up_status.configure(text=msg, text_color="#38BDF8")
                     else:
                         lbl_up_status.configure(text=msg, text_color="#38BDF8")
                 self.after(0, _ui)
