@@ -797,7 +797,9 @@ class BrowserIPCServer:
                 self.send_response(code)
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, *")
+
+                self.send_header("Access-Control-Allow-Private-Network", "true")
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
 
@@ -816,13 +818,17 @@ class BrowserIPCServer:
                         cookies_path = data.get("cookies_path", "")
                         title = data.get("title", "")
                         browser = data.get("browser", "")
+                        media_type = data.get("media_type", "video")
                         if browser:
                             try:
                                 sync_profile_cookies_to_files(browser)
                             except Exception:
                                 pass
                         if url and outer.on_download:
-                            outer.on_download(url, cookies_path, title)
+                            try:
+                                outer.on_download(url, cookies_path, title, media_type)
+                            except TypeError:
+                                outer.on_download(url, cookies_path, title)
                         self._send_cors_headers(200)
                         self.wfile.write(b'{"status":"ok"}')
                         return
@@ -858,14 +864,25 @@ class BrowserIPCServer:
             def log_message(self, format, *args):
                 pass  # Suppress console HTTP access logs
 
-        self._server = http.server.HTTPServer(("127.0.0.1", 0), IPCHandler)
-        self.port = self._server.server_port
+        self._server = None
+        for p in (18932, 18933, 18934, 18935):
+            try:
+                self._server = http.server.HTTPServer(("127.0.0.1", p), IPCHandler)
+                self.port = p
+                break
+            except Exception:
+                continue
+        if not self._server:
+            self._server = http.server.HTTPServer(("127.0.0.1", 0), IPCHandler)
+            self.port = self._server.server_port
+
         try:
             (get_browser_data_dir() / "ipc_port.txt").write_text(str(self.port), encoding="utf-8")
         except Exception:
             pass
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
+        print(f"[HQ Downloader IPC] Server listening on http://127.0.0.1:{self.port}", flush=True)
         return self.port
 
     def stop(self) -> None:
@@ -1044,49 +1061,66 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
     target_browser = browser_name or "Google Chrome"
 
     # 3. Background Service Worker (background.js)
-    background_js = f"""// Background service worker for HQ Video Downloader
-const DEFAULT_IPC_PORT = {effective_port};
+    background_js = """// Background service worker for HQ Video Downloader
+const CANDIDATE_PORTS = [18932, 18933, 18934, 18935];
 
-chrome.runtime.onInstalled.addListener(() => {{
-    chrome.contextMenus.create({{
+async function sendDownloadToApp(url, title, mediaType) {
+    console.log('[HQ Downloader Extension Background] Sending to app:', url, mediaType);
+    let success = false;
+    for (const port of CANDIDATE_PORTS) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1800);
+            const res = await fetch(`http://127.0.0.1:${port}/download`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: url,
+                    title: title || "",
+                    media_type: mediaType || "video",
+                    browser: "Browser Extension"
+                }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            if (res.ok) {
+                console.log(`[HQ Downloader Extension] Successfully delivered to port ${port}`);
+                success = true;
+                break;
+            }
+        } catch(e) {}
+    }
+    return success;
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+    chrome.contextMenus.create({
         id: "deepx_download_video",
         title: "⬇ Download Video with HQ Downloader",
         contexts: ["page", "video", "link"]
-    }});
-    chrome.contextMenus.create({{
+    });
+    chrome.contextMenus.create({
         id: "deepx_download_audio",
         title: "🎵 Download Audio (MP3) with HQ Downloader",
         contexts: ["page", "video", "audio", "link"]
-    }});
-}});
+    });
+});
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {{
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     let targetUrl = info.srcUrl || info.linkUrl || (tab && tab.url) || "";
     if (!targetUrl) return;
     const mediaType = info.menuItemId === "deepx_download_audio" ? "audio" : "video";
+    await sendDownloadToApp(targetUrl, (tab && tab.title) || "", mediaType);
+});
 
-    let port = DEFAULT_IPC_PORT;
-    try {{
-        const res = await chrome.storage.local.get(["ipc_port"]);
-        if (res && res.ipc_port) port = res.ipc_port;
-    }} catch(e) {{}}
-
-    try {{
-        await fetch(`http://127.0.0.1:${{port}}/download`, {{
-            method: "POST",
-            mode: "cors",
-            headers: {{ "Content-Type": "application/json" }},
-            body: JSON.stringify({{
-                url: targetUrl,
-                title: (tab && tab.title) || "",
-                media_type: mediaType,
-                browser: "Browser Extension"
-            }})
-        }});
-    }} catch(e) {{
-        console.log("[HQ Downloader] Failed to contact IPC port:", e);
-    }}
-}});
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "download") {
+        sendDownloadToApp(request.url, request.title, request.media_type)
+            .then(ok => sendResponse({ status: ok ? "ok" : "error" }))
+            .catch(err => sendResponse({ status: "error", error: String(err) }));
+        return true;
+    }
+});
 """
     (ext_dir / "background.js").write_text(background_js, encoding="utf-8")
 
@@ -1208,9 +1242,9 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {{
     (ext_dir / "popup.html").write_text(popup_html, encoding="utf-8")
 
     # 5. Popup JS (popup.js)
-    popup_js = f"""const IPC_DEFAULT_PORT = {effective_port};
+    popup_js = """const CANDIDATE_PORTS = [18932, 18933, 18934, 18935];
 
-document.addEventListener('DOMContentLoaded', async () => {{
+document.addEventListener('DOMContentLoaded', async () => {
     const currentUrlEl = document.getElementById('current-url');
     const btnVideo = document.getElementById('btn-download-video');
     const btnAudio = document.getElementById('btn-download-audio');
@@ -1218,70 +1252,77 @@ document.addEventListener('DOMContentLoaded', async () => {{
     const statusEl = document.getElementById('status-text');
 
     let activeTab = null;
-    try {{
-        const tabs = await chrome.tabs.query({{ active: true, currentWindow: true }});
-        if (tabs && tabs[0]) {{
+    try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tabs && tabs[0]) {
             activeTab = tabs[0];
             currentUrlEl.textContent = activeTab.url;
             currentUrlEl.title = activeTab.url;
-        }}
-    }} catch (e) {{
+        }
+    } catch (e) {
         currentUrlEl.textContent = 'Active tab URL';
-    }}
+    }
 
-    let ipcPort = IPC_DEFAULT_PORT;
-    try {{
-        const res = await chrome.storage.local.get(['ipc_port']);
-        if (res && res.ipc_port) ipcPort = res.ipc_port;
-    }} catch (e) {{}}
-
-    async function sendDownload(mediaType) {{
+    async function sendDownload(mediaType) {
         if (!activeTab || !activeTab.url) return;
         const btn = mediaType === 'audio' ? btnAudio : btnVideo;
         const oldText = btn.textContent;
         btn.textContent = '✓ Queued in Downloader!';
         btn.classList.add('success');
 
-        try {{
+        try {
             await navigator.clipboard.writeText(activeTab.url);
-        }} catch (e) {{}}
+        } catch (e) {}
 
-        try {{
-            await fetch(`http://127.0.0.1:${{ipcPort}}/download`, {{
-                method: 'POST',
-                mode: 'cors',
-                headers: {{ 'Content-Type': 'application/json' }},
-                body: JSON.stringify({{
-                    url: activeTab.url,
-                    title: activeTab.title || '',
-                    media_type: mediaType,
-                    browser: 'Extension Popup'
-                }})
-            }});
-            statusEl.textContent = '✓ Sent to HQ Downloader successfully!';
-        }} catch (err) {{
+        let delivered = false;
+        for (const port of CANDIDATE_PORTS) {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 1600);
+                const res = await fetch(`http://127.0.0.1:${port}/download`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url: activeTab.url,
+                        title: activeTab.title || '',
+                        media_type: mediaType,
+                        browser: 'Extension Popup'
+                    }),
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                if (res.ok) {
+                    delivered = true;
+                    statusEl.textContent = '✓ Sent to HQ Downloader successfully!';
+                    break;
+                }
+            } catch(e) {}
+        }
+        if (!delivered) {
             statusEl.textContent = '✓ Copied to clipboard for Downloader';
-        }}
+        }
 
-        setTimeout(() => {{
+        setTimeout(() => {
             btn.textContent = oldText;
             btn.classList.remove('success');
-        }}, 2200);
-    }}
+        }, 2200);
+    }
 
     btnVideo.addEventListener('click', () => sendDownload('video'));
     btnAudio.addEventListener('click', () => sendDownload('audio'));
-    btnApp.addEventListener('click', async () => {{
-        try {{
-            await fetch(`http://127.0.0.1:${{ipcPort}}/focus`, {{
-                method: 'POST',
-                mode: 'cors',
-                headers: {{ 'Content-Type': 'application/json' }},
-                body: JSON.stringify({{ action: 'focus_main' }})
-            }});
-        }} catch (e) {{}}
-    }});
-}});
+    btnApp.addEventListener('click', async () => {
+        for (const port of CANDIDATE_PORTS) {
+            try {
+                await fetch(`http://127.0.0.1:${port}/focus`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'focus_main' })
+                });
+                break;
+            } catch (e) {}
+        }
+    });
+});
 """
     (ext_dir / "popup.js").write_text(popup_js, encoding="utf-8")
 
@@ -1301,12 +1342,34 @@ document.addEventListener('DOMContentLoaded', async () => {{
     } catch(e) {}
 
     function queueDownload(targetUrl, mediaType = "video") {
-        const cleanUrl = targetUrl || window.location.href;
+        let cleanUrl = targetUrl || window.location.href;
+        try {
+            cleanUrl = new URL(cleanUrl, window.location.href).href;
+        } catch(e) {}
         console.log('[HQ Downloader Extension] Enqueuing download:', cleanUrl, mediaType);
 
-        if (IPC_PORT > 0) {
+        // 1. Send to Extension Background Worker (Unrestricted Network Access)
+        try {
+            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+                chrome.runtime.sendMessage({
+                    action: "download",
+                    url: cleanUrl,
+                    title: document.title,
+                    media_type: mediaType
+                }, function(response) {
+                    console.log('[HQ Downloader] Background response:', response);
+                });
+            }
+        } catch(e) {
+            console.log('[HQ Downloader] sendMessage fallback:', e);
+        }
+
+        // 2. Direct fetch fallback to all candidate ports
+        const candidatePorts = [18932, 18933, 18934, 18935];
+        for (let idx = 0; idx < candidatePorts.length; idx++) {
+            const p = candidatePorts[idx];
             try {
-                fetch('http://127.0.0.1:' + IPC_PORT + '/download', {
+                fetch('http://127.0.0.1:' + p + '/download', {
                     method: 'POST',
                     mode: 'cors',
                     headers: { 'Content-Type': 'application/json' },
@@ -1318,15 +1381,21 @@ document.addEventListener('DOMContentLoaded', async () => {{
                         cookies_path: ''
                     })
                 }).catch(() => {});
-            } catch (e) {}
+            } catch(e) {}
         }
 
-        // Copy to clipboard as reliable fallback for smart clipboard monitor
+        // 3. Fast synchronous Clipboard copy fallback for Smart Clipboard Monitor
         try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(cleanUrl).catch(() => {});
-            }
-        } catch (e) {}
+            const ta = document.createElement('textarea');
+            ta.value = cleanUrl;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            (document.body || document.documentElement).appendChild(ta);
+            ta.focus();
+            ta.select();
+            document.execCommand('copy');
+            ta.remove();
+        } catch(e) {}
 
         showToast(mediaType === 'audio' ? '🎵 Audio Queued in HQ Downloader!' : '✓ Queued in HQ Downloader!');
     }

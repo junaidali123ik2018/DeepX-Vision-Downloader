@@ -4320,7 +4320,9 @@ class HQVideoDownloaderApp(ctk.CTk):
                 pass
         self.after(0, _focus)
 
-    def _on_browser_download_received(self, url: str, cookies_path: str, title: str) -> None:
+    def _on_browser_download_received(
+        self, url: str, cookies_path: str = "", title: str = "", media_type: str = "video"
+    ) -> None:
         def _do_enqueue():
             if cookies_path and Path(cookies_path).is_file():
                 platform = detect_platform_from_url(url)
@@ -4329,11 +4331,25 @@ class HQVideoDownloaderApp(ctk.CTk):
                     self.settings.authorized_accounts[platform] = cookies_path
                     self.store.save(self.settings)
 
+            if media_type == "audio":
+                try:
+                    self.format_choice_var.set("Audio (.mp3)")
+                except Exception:
+                    pass
+            elif media_type == "video":
+                try:
+                    if "Audio" in self.format_choice_var.get():
+                        self.format_choice_var.set("Video (Auto MP4/MKV)")
+                except Exception:
+                    pass
+
             self._queue_urls([url])
             self.show_page("downloads")
             try:
                 self.deiconify()
                 self.lift()
+                self.attributes("-topmost", True)
+                self.after(600, lambda: self.attributes("-topmost", False))
                 self.focus_force()
             except Exception:
                 pass
