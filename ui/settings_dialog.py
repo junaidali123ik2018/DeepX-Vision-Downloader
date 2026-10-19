@@ -220,6 +220,16 @@ class SettingsDialog(ctk.CTkToplevel):
             text_color="#CBD5E1",
             fg_color="#3B82F6",
             command=self._save_basic,
+        ).pack(anchor="w", padx=16, pady=6)
+
+        self.sound_var = ctk.BooleanVar(value=getattr(self.settings, "play_sound_on_complete", True))
+        ctk.CTkCheckBox(
+            app_set,
+            text="Play audio sound when video download completes (🔊 Chime)",
+            variable=self.sound_var,
+            text_color="#CBD5E1",
+            fg_color="#3B82F6",
+            command=self._save_basic,
         ).pack(anchor="w", padx=16, pady=(6, 16))
 
         # Browser Engine Configuration (Dedicated Isolated App Profile)
@@ -230,13 +240,13 @@ class SettingsDialog(ctk.CTkToplevel):
         header_row.pack(fill="x", padx=16, pady=(12, 4))
         ctk.CTkLabel(
             header_row,
-            text="🌐 In-App Browser Engine",
+            text="🌐 In-App Browser Engine & Extension",
             text_color="#F8FAFC",
             font=ctk.CTkFont(family="Times New Roman", size=13, weight="bold"),
         ).pack(side="left")
 
         # Detect installed browsers
-        from ui.browser_window import BrowserManager, get_installed_browsers, launch_isolated_browser
+        from ui.browser_window import BrowserManager, get_installed_browsers, launch_isolated_browser, install_or_open_browser_extension
         installed_dict = get_installed_browsers()
         browser_names = ["Built-in Browser (WebView)"] + [k for k in installed_dict.keys() if k != "Built-in Browser (WebView)"]
         if len(browser_names) == 1:
@@ -270,27 +280,83 @@ class SettingsDialog(ctk.CTkToplevel):
         )
         browser_menu.pack(side="right")
 
-        # Test launch row
+        # Test launch & Extension row
         def _test_launch():
             chosen = self.browser_var.get()
             BrowserManager.open_browser("https://www.youtube.com", browser_name=chosen)
+
+        def _manage_extension():
+            chosen = self.browser_var.get()
+            install_or_open_browser_extension(chosen)
+            # Show guidance dialog
+            info_win = ctk.CTkToplevel(self)
+            info_win.title("🧩 Browser Extension Setup Guide")
+            info_win.geometry("520x340")
+            info_win.transient(self)
+            info_win.grab_set()
+            info_win.configure(fg_color="#0F172A")
+
+            ctk.CTkLabel(
+                info_win,
+                text="🧩 Add HQ Downloader Extension to Browser",
+                font=ctk.CTkFont(family="Times New Roman", size=16, weight="bold"),
+                text_color="#38BDF8",
+            ).pack(anchor="w", padx=20, pady=(20, 10))
+
+            steps_text = (
+                "Extension folder Explorer ma open ho gaya hay or browser ka Extension Page b khul gaya hay.\n\n"
+                "1. Browser k top-right par 'Developer Mode' toggle ON karein.\n"
+                "2. 'Load unpacked' button par click karein.\n"
+                "3. Jo folder Explorer ma khula hay (extension folder) usay select karein.\n\n"
+                "✓ Is k baad YouTube, TikTok, Facebook, Instagram, Twitter/X or har video par "
+                "Download button or Extension Popup active ho jayega!"
+            )
+            ctk.CTkLabel(
+                info_win,
+                text=steps_text,
+                font=ctk.CTkFont(family="Times New Roman", size=13),
+                text_color="#E2E8F0",
+                justify="left",
+                wraplength=470,
+            ).pack(anchor="w", padx=20, pady=10)
+
+            ctk.CTkButton(
+                info_win,
+                text="Theek hay / Done",
+                font=ctk.CTkFont(family="Times New Roman", size=13, weight="bold"),
+                fg_color="#2563EB",
+                hover_color="#1D4ED8",
+                width=130,
+                command=info_win.destroy,
+            ).pack(anchor="center", pady=(15, 20))
 
         test_row = ctk.CTkFrame(browser_card, fg_color="transparent")
         test_row.pack(fill="x", padx=16, pady=(2, 12))
 
         ctk.CTkLabel(
             test_row,
-            text="🔒 Isolated Profile: Encrypted locally, 100% separate from personal browser.",
+            text="🔒 Dedicated Isolated Profile & Custom MV3 Browser Extension.",
             text_color="#64748B",
             font=ctk.CTkFont(family="Times New Roman", size=11, slant="italic"),
-            wraplength=380,
+            wraplength=270,
             justify="left",
         ).pack(side="left")
 
         ctk.CTkButton(
             test_row,
+            text="🧩 Install Extension",
+            width=135,
+            height=28,
+            fg_color="#2563EB",
+            hover_color="#1D4ED8",
+            font=ctk.CTkFont(family="Times New Roman", size=11, weight="bold"),
+            command=_manage_extension,
+        ).pack(side="right", padx=(6, 0))
+
+        ctk.CTkButton(
+            test_row,
             text="Test Launch",
-            width=90,
+            width=88,
             height=28,
             fg_color="#334155",
             hover_color="#475569",
@@ -314,6 +380,8 @@ class SettingsDialog(ctk.CTkToplevel):
         self.settings.display_floating_window = self.float_var.get()
         self.settings.run_in_background = self.bg_var.get()
         self.settings.monitor_clipboard = self.clip_var.get()
+        if hasattr(self, "sound_var"):
+            self.settings.play_sound_on_complete = self.sound_var.get()
         if hasattr(self, "theme_var"):
             self.settings.appearance_mode = self.theme_var.get()
         if hasattr(self, "browser_var"):

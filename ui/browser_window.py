@@ -959,20 +959,65 @@ def sync_profile_cookies_to_files(browser_name: str = "Google Chrome") -> None:
 
 def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chrome") -> Path:
     """
-    Generates or updates the DeepX Browser Helper Extension.
-    Injects 1-Click Download buttons (floating widget, in-feed cards, top bar)
-    directly into YouTube, TikTok, Instagram, Twitter, and other websites.
+    Generates or updates the HQ Video Downloader Helper Extension.
+    Creates a full Manifest V3 extension package with:
+    - Popup window (toolbar icon) with 1-click Download Video / Audio buttons
+    - Background service worker registering context menu options on videos, audios & links
+    - Content scripts injecting floating pills, top control bar, and in-feed buttons into YouTube, TikTok, Facebook, Instagram, Twitter/X, and HTML5 video tags.
     """
     ext_dir = get_browser_data_dir() / "extension"
+    icons_dir = ext_dir / "icons"
     ext_dir.mkdir(parents=True, exist_ok=True)
+    icons_dir.mkdir(parents=True, exist_ok=True)
 
+    # 1. Generate Icons (16x16, 48x48, 128x128)
+    try:
+        from PIL import Image
+        src_icon = Path(__file__).parent.parent / "assets" / "icon_perfect.png"
+        if not src_icon.is_file():
+            src_icon = Path(__file__).parent.parent / "assets" / "app_icon.ico"
+        if src_icon.is_file():
+            base_img = Image.open(src_icon).convert("RGBA")
+            for sz in (16, 48, 128):
+                out_path = icons_dir / f"icon{sz}.png"
+                if not out_path.is_file() or out_path.stat().st_size == 0:
+                    resized = base_img.resize((sz, sz), Image.Resampling.LANCZOS)
+                    resized.save(out_path, format="PNG")
+    except Exception as e:
+        print(f"[DeepX Extension] Notice: Icon generation fallback: {e}", flush=True)
+
+    # 2. Manifest V3
     manifest = {
         "manifest_version": 3,
-        "name": "DeepX Vision Downloader Helper",
-        "version": "2.5.2",
-        "description": "1-Click Download integration for DeepX Vision Downloader",
-        "permissions": ["activeTab", "scripting"],
-        "host_permissions": ["<all_urls>"],
+        "name": "HQ Video Downloader Companion",
+        "version": "2.6.0",
+        "description": "1-Click Download button for YouTube, TikTok, Facebook, Instagram, Twitter/X and all web videos with HQ Video Downloader",
+        "action": {
+            "default_popup": "popup.html",
+            "default_icon": {
+                "16": "icons/icon16.png",
+                "48": "icons/icon48.png",
+                "128": "icons/icon128.png"
+            },
+            "default_title": "HQ Video Downloader"
+        },
+        "icons": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+        },
+        "background": {
+            "service_worker": "background.js"
+        },
+        "permissions": [
+            "activeTab",
+            "scripting",
+            "contextMenus",
+            "storage"
+        ],
+        "host_permissions": [
+            "<all_urls>"
+        ],
         "content_scripts": [
             {
                 "matches": ["<all_urls>"],
@@ -982,7 +1027,6 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
             }
         ]
     }
-
     manifest_file = ext_dir / "manifest.json"
     manifest_file.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
@@ -993,11 +1037,256 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
             try:
                 effective_port = int(port_file.read_text(encoding="utf-8").strip())
             except Exception:
-                effective_port = 0
+                effective_port = 18932
+    if not effective_port or effective_port <= 0:
+        effective_port = 18932
 
     target_browser = browser_name or "Google Chrome"
 
-    raw_js = r"""// DeepX Vision Downloader Browser Extension Helper
+    # 3. Background Service Worker (background.js)
+    background_js = f"""// Background service worker for HQ Video Downloader
+const DEFAULT_IPC_PORT = {effective_port};
+
+chrome.runtime.onInstalled.addListener(() => {{
+    chrome.contextMenus.create({{
+        id: "deepx_download_video",
+        title: "⬇ Download Video with HQ Downloader",
+        contexts: ["page", "video", "link"]
+    }});
+    chrome.contextMenus.create({{
+        id: "deepx_download_audio",
+        title: "🎵 Download Audio (MP3) with HQ Downloader",
+        contexts: ["page", "video", "audio", "link"]
+    }});
+}});
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {{
+    let targetUrl = info.srcUrl || info.linkUrl || (tab && tab.url) || "";
+    if (!targetUrl) return;
+    const mediaType = info.menuItemId === "deepx_download_audio" ? "audio" : "video";
+
+    let port = DEFAULT_IPC_PORT;
+    try {{
+        const res = await chrome.storage.local.get(["ipc_port"]);
+        if (res && res.ipc_port) port = res.ipc_port;
+    }} catch(e) {{}}
+
+    try {{
+        await fetch(`http://127.0.0.1:${{port}}/download`, {{
+            method: "POST",
+            mode: "cors",
+            headers: {{ "Content-Type": "application/json" }},
+            body: JSON.stringify({{
+                url: targetUrl,
+                title: (tab && tab.title) || "",
+                media_type: mediaType,
+                browser: "Browser Extension"
+            }})
+        }});
+    }} catch(e) {{
+        console.log("[HQ Downloader] Failed to contact IPC port:", e);
+    }}
+}});
+"""
+    (ext_dir / "background.js").write_text(background_js, encoding="utf-8")
+
+    # 4. Popup HTML (popup.html)
+    popup_html = """<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>HQ Video Downloader</title>
+  <style>
+    body {
+      width: 320px;
+      margin: 0;
+      padding: 16px;
+      font-family: 'Times New Roman', serif;
+      background: #0F172A;
+      color: #F8FAFC;
+      box-sizing: border-box;
+      user-select: none;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid #1E293B;
+      padding-bottom: 12px;
+      margin-bottom: 14px;
+    }
+    .header img {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: bold;
+      color: #38BDF8;
+    }
+    .url-box {
+      background: #020617;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 11px;
+      color: #94A3B8;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-bottom: 14px;
+    }
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 10px 14px;
+      margin-bottom: 10px;
+      border: none;
+      border-radius: 8px;
+      font-family: 'Times New Roman', serif;
+      font-size: 13px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-video {
+      background: #2563EB;
+      color: #FFFFFF;
+    }
+    .btn-video:hover {
+      background: #1D4ED8;
+    }
+    .btn-audio {
+      background: #8B5CF6;
+      color: #FFFFFF;
+    }
+    .btn-audio:hover {
+      background: #7C3AED;
+    }
+    .btn-app {
+      background: #1E293B;
+      color: #38BDF8;
+      border: 1px solid #334155;
+    }
+    .btn-app:hover {
+      background: #334155;
+    }
+    .footer {
+      font-size: 11px;
+      color: #64748B;
+      text-align: center;
+      margin-top: 8px;
+    }
+    .success {
+      background: #10B981 !important;
+      color: #FFFFFF !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon48.png" alt="Icon" onerror="this.style.display='none'">
+    <div>
+      <h1>HQ Video Downloader</h1>
+      <div style="font-size: 11px; color: #94A3B8;">Browser Companion</div>
+    </div>
+  </div>
+  <div class="url-box" id="current-url">Detecting video page...</div>
+  <button class="btn btn-video" id="btn-download-video">⬇ Download Video (Highest)</button>
+  <button class="btn btn-audio" id="btn-download-audio">🎵 Download Audio (MP3)</button>
+  <button class="btn btn-app" id="btn-open-app">⚡ Open HQ Downloader App</button>
+  <div class="footer" id="status-text">Connected to HQ Downloader</div>
+  <script src="popup.js"></script>
+</body>
+</html>
+"""
+    (ext_dir / "popup.html").write_text(popup_html, encoding="utf-8")
+
+    # 5. Popup JS (popup.js)
+    popup_js = f"""const IPC_DEFAULT_PORT = {effective_port};
+
+document.addEventListener('DOMContentLoaded', async () => {{
+    const currentUrlEl = document.getElementById('current-url');
+    const btnVideo = document.getElementById('btn-download-video');
+    const btnAudio = document.getElementById('btn-download-audio');
+    const btnApp = document.getElementById('btn-open-app');
+    const statusEl = document.getElementById('status-text');
+
+    let activeTab = null;
+    try {{
+        const tabs = await chrome.tabs.query({{ active: true, currentWindow: true }});
+        if (tabs && tabs[0]) {{
+            activeTab = tabs[0];
+            currentUrlEl.textContent = activeTab.url;
+            currentUrlEl.title = activeTab.url;
+        }}
+    }} catch (e) {{
+        currentUrlEl.textContent = 'Active tab URL';
+    }}
+
+    let ipcPort = IPC_DEFAULT_PORT;
+    try {{
+        const res = await chrome.storage.local.get(['ipc_port']);
+        if (res && res.ipc_port) ipcPort = res.ipc_port;
+    }} catch (e) {{}}
+
+    async function sendDownload(mediaType) {{
+        if (!activeTab || !activeTab.url) return;
+        const btn = mediaType === 'audio' ? btnAudio : btnVideo;
+        const oldText = btn.textContent;
+        btn.textContent = '✓ Queued in Downloader!';
+        btn.classList.add('success');
+
+        try {{
+            await navigator.clipboard.writeText(activeTab.url);
+        }} catch (e) {{}}
+
+        try {{
+            await fetch(`http://127.0.0.1:${{ipcPort}}/download`, {{
+                method: 'POST',
+                mode: 'cors',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify({{
+                    url: activeTab.url,
+                    title: activeTab.title || '',
+                    media_type: mediaType,
+                    browser: 'Extension Popup'
+                }})
+            }});
+            statusEl.textContent = '✓ Sent to HQ Downloader successfully!';
+        }} catch (err) {{
+            statusEl.textContent = '✓ Copied to clipboard for Downloader';
+        }}
+
+        setTimeout(() => {{
+            btn.textContent = oldText;
+            btn.classList.remove('success');
+        }}, 2200);
+    }}
+
+    btnVideo.addEventListener('click', () => sendDownload('video'));
+    btnAudio.addEventListener('click', () => sendDownload('audio'));
+    btnApp.addEventListener('click', async () => {{
+        try {{
+            await fetch(`http://127.0.0.1:${{ipcPort}}/focus`, {{
+                method: 'POST',
+                mode: 'cors',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify({{ action: 'focus_main' }})
+            }});
+        }} catch (e) {{}}
+    }});
+}});
+"""
+    (ext_dir / "popup.js").write_text(popup_js, encoding="utf-8")
+
+    # 6. Content Script (content.js)
+    raw_js = r"""// HQ Video Downloader Browser Extension Content Script
 (function() {
     if (window.__deepx_helper_injected) return;
     window.__deepx_helper_injected = true;
@@ -1005,9 +1294,15 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
     const IPC_PORT = __IPC_PORT__;
     const BROWSER_NAME = "__BROWSER_NAME__";
 
+    try {
+        if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.set({ ipc_port: IPC_PORT });
+        }
+    } catch(e) {}
+
     function queueDownload(targetUrl, mediaType = "video") {
         const cleanUrl = targetUrl || window.location.href;
-        console.log('[DeepX Helper] Enqueuing download:', cleanUrl, mediaType);
+        console.log('[HQ Downloader Extension] Enqueuing download:', cleanUrl, mediaType);
 
         if (IPC_PORT > 0) {
             try {
@@ -1033,7 +1328,7 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
             }
         } catch (e) {}
 
-        showToast(mediaType === 'audio' ? '🎵 Audio Queued in DeepX!' : '✓ Queued in DeepX Downloader!');
+        showToast(mediaType === 'audio' ? '🎵 Audio Queued in HQ Downloader!' : '✓ Queued in HQ Downloader!');
     }
 
     function syncCookies() {
@@ -1130,6 +1425,10 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
                 background: #1D4ED8 !important;
                 transform: scale(1.06) !important;
             }
+            .deepx-video-overlay-btn {
+                top: 12px !important;
+                right: 12px !important;
+            }
         `;
         (document.head || document.documentElement).appendChild(styleEl);
     }
@@ -1197,7 +1496,7 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
         };
 
         // Return to Downloader Button
-        const btnReturn = makeNavBtn('⬅ Back to Downloader', 'Bring DeepX Vision Downloader to front', returnToDownloader, false);
+        const btnReturn = makeNavBtn('⬅ Back to Downloader', 'Bring HQ Video Downloader to front', returnToDownloader, false);
         btnReturn.style.background = '#0F172A';
         btnReturn.style.color = '#38BDF8';
         btnReturn.style.borderColor = '#0284C7';
@@ -1259,7 +1558,7 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
         }
 
         // Top Video Download Button
-        const topDlBtn = makeNavBtn('⬇ Download Video', 'Send current video to DeepX Downloader', () => {
+        const topDlBtn = makeNavBtn('⬇ Download Video', 'Send current video to HQ Downloader', () => {
             topDlBtn.dataset.active = 'true';
             topDlBtn.textContent = '✓ Queued!';
             topDlBtn.style.backgroundColor = '#10B981';
@@ -1273,7 +1572,7 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
         bar.appendChild(topDlBtn);
 
         // Top Audio MP3 Download Button
-        const topMp3Btn = makeNavBtn('🎵 MP3', 'Send audio to DeepX Downloader', () => {
+        const topMp3Btn = makeNavBtn('🎵 MP3', 'Send audio to HQ Downloader', () => {
             topMp3Btn.dataset.active = 'true';
             topMp3Btn.textContent = '✓ MP3!';
             topMp3Btn.style.backgroundColor = '#10B981';
@@ -1323,7 +1622,7 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
         }, 1000);
     }
 
-    // 2. Floating EaseUS-style Download Action Pill (Video + MP3)
+    // 2. Floating Download Action Pill (Video + MP3)
     function createFloatingWidget() {
         if (document.getElementById('deepx-floating-btn')) return;
         if (!document.body && !document.documentElement) return;
@@ -1420,7 +1719,7 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
         (document.body || document.documentElement).appendChild(container);
     }
 
-    // 3. In-Feed Video Card Buttons for YouTube, TikTok, Instagram, Facebook, Twitter
+    // 3. In-Feed Video Card Buttons for YouTube, TikTok, Instagram, Facebook, Twitter, and HTML5 Videos
     function injectCardButtons() {
         // A. YouTube Cards
         if (window.location.hostname.includes('youtube.com')) {
@@ -1458,8 +1757,6 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
                 const btn = document.createElement('div');
                 btn.className = 'deepx-card-dl-btn';
                 btn.textContent = '⬇ Download';
-                btn.title = 'Queue this video in DeepX Vision Downloader';
-
                 btn.onclick = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -1475,56 +1772,24 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
             }
         }
 
-        // B. TikTok Cards
+        // B. TikTok Feed Cards & Player
         if (window.location.hostname.includes('tiktok.com')) {
-            const ttTargets = document.querySelectorAll(
-                '[data-e2e="user-post-item"], [data-e2e="feed-video"], [data-e2e="recommend-list-item-container"], ' +
-                'div[class*="DivItemContainer"], div[class*="DivVideoWrapper"], a[href*="/video/"]'
+            const ttCards = document.querySelectorAll(
+                'div[data-e2e="recommend-list-item-container"], div[class*="DivItemContainer"], ' +
+                'div[class*="DivVideoFeed"], a[href*="/video/"]'
             );
-            for (let j = 0; j < ttTargets.length; j++) {
-                const card = ttTargets[j];
-                if (card.querySelector('.deepx-card-dl-btn')) continue;
-                let link = card.tagName === 'A' ? card : card.querySelector('a[href*="/video/"]');
-                if (!link && card.closest) {
-                    link = card.closest('a[href*="/video/"]');
+            for (let j = 0; j < ttCards.length; j++) {
+                const card = ttCards[j];
+                if (card.querySelector('.deepx-card-dl-btn') || card.closest('.deepx-card-dl-btn')) continue;
+                const r = card.getBoundingClientRect();
+                if (r.width < 100 || r.height < 100) continue;
+
+                let videoLink = card.href || (card.querySelector('a[href*="/video/"]') ? card.querySelector('a[href*="/video/"]').href : '');
+                if (!videoLink && card.closest) {
+                    const parentA = card.closest('a[href*="/video/"]');
+                    if (parentA) videoLink = parentA.href;
                 }
-                if (!link || !link.href) continue;
-
-                const r = card.getBoundingClientRect();
-                if (r.width < 70 || r.height < 60) continue;
-
-                const targetBox = card.querySelector('div[class*="DivContainer"], div[class*="DivWrapper"]') || card;
-                const comp = window.getComputedStyle(targetBox);
-                if (comp.position === 'static') targetBox.style.position = 'relative';
-
-                const btn = document.createElement('div');
-                btn.className = 'deepx-card-dl-btn';
-                btn.textContent = '⬇ Download';
-                btn.title = 'Queue this TikTok in DeepX Vision Downloader';
-
-                btn.onclick = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    btn.textContent = '✓ Queued!';
-                    btn.style.backgroundColor = '#10B981';
-                    queueDownload(link.href, 'video');
-                    setTimeout(() => {
-                        btn.textContent = '⬇ Download';
-                        btn.style.backgroundColor = '#2563EB';
-                    }, 2200);
-                };
-                targetBox.appendChild(btn);
-            }
-        }
-
-        // C. Instagram Cards
-        if (window.location.hostname.includes('instagram.com')) {
-            const igCards = document.querySelectorAll('a[href*="/p/"], a[href*="/reel/"]');
-            for (let k = 0; k < igCards.length; k++) {
-                const card = igCards[k];
-                if (card.querySelector('.deepx-card-dl-btn')) continue;
-                const r = card.getBoundingClientRect();
-                if (r.width < 70 || r.height < 70) continue;
+                const dlUrl = videoLink || window.location.href;
 
                 const comp = window.getComputedStyle(card);
                 if (comp.position === 'static') card.style.position = 'relative';
@@ -1532,20 +1797,51 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
                 const btn = document.createElement('div');
                 btn.className = 'deepx-card-dl-btn';
                 btn.textContent = '⬇ Download';
-                btn.title = 'Queue this post in DeepX Vision Downloader';
-
                 btn.onclick = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     btn.textContent = '✓ Queued!';
                     btn.style.backgroundColor = '#10B981';
-                    queueDownload(card.href, 'video');
+                    queueDownload(dlUrl, 'video');
                     setTimeout(() => {
                         btn.textContent = '⬇ Download';
                         btn.style.backgroundColor = '#2563EB';
                     }, 2200);
                 };
                 card.appendChild(btn);
+            }
+        }
+
+        // C. Instagram Reels & Posts
+        if (window.location.hostname.includes('instagram.com')) {
+            const igCards = document.querySelectorAll('a[href*="/reel/"], a[href*="/p/"], article, div[role="dialog"]');
+            for (let k = 0; k < igCards.length; k++) {
+                const ig = igCards[k];
+                if (ig.querySelector('.deepx-card-dl-btn') || ig.closest('.deepx-card-dl-btn')) continue;
+                const r = ig.getBoundingClientRect();
+                if (r.width < 100 || r.height < 100) continue;
+
+                let igHref = ig.href || (ig.querySelector('a[href*="/reel/"], a[href*="/p/"]') ? ig.querySelector('a[href*="/reel/"], a[href*="/p/"]').href : '');
+                const dlUrl = igHref || window.location.href;
+
+                const comp = window.getComputedStyle(ig);
+                if (comp.position === 'static') ig.style.position = 'relative';
+
+                const btn = document.createElement('div');
+                btn.className = 'deepx-card-dl-btn';
+                btn.textContent = '⬇ Download';
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    btn.textContent = '✓ Queued!';
+                    btn.style.backgroundColor = '#10B981';
+                    queueDownload(dlUrl, 'video');
+                    setTimeout(() => {
+                        btn.textContent = '⬇ Download';
+                        btn.style.backgroundColor = '#2563EB';
+                    }, 2200);
+                };
+                ig.appendChild(btn);
             }
         }
 
@@ -1578,9 +1874,39 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
                 gLink.appendChild(btn);
             }
         }
+
+        // E. Generic HTML5 <video> tags on ANY website
+        const videos = document.querySelectorAll('video');
+        for (let v = 0; v < videos.length; v++) {
+            const vid = videos[v];
+            if (vid.closest('#deepx-top-control-bar') || vid.closest('#deepx-floating-btn')) continue;
+            const parent = vid.parentElement;
+            if (!parent || parent.querySelector('.deepx-video-overlay-btn')) continue;
+            const r = vid.getBoundingClientRect();
+            if (r.width < 120 || r.height < 80) continue;
+
+            const comp = window.getComputedStyle(parent);
+            if (comp.position === 'static') parent.style.position = 'relative';
+
+            const ovBtn = document.createElement('div');
+            ovBtn.className = 'deepx-card-dl-btn deepx-video-overlay-btn';
+            ovBtn.textContent = '⬇ Download Video';
+            ovBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                ovBtn.textContent = '✓ Queued!';
+                ovBtn.style.backgroundColor = '#10B981';
+                queueDownload(window.location.href, 'video');
+                setTimeout(() => {
+                    ovBtn.textContent = '⬇ Download Video';
+                    ovBtn.style.backgroundColor = '#2563EB';
+                }, 2200);
+            };
+            parent.appendChild(ovBtn);
+        }
     }
 
-    // 4. Keyboard Shortcuts
+    // 4. Keyboard Shortcuts (Alt+D / Ctrl+Shift+D)
     window.addEventListener('keydown', (e) => {
         if ((e.altKey && e.key.toLowerCase() === 'd') || (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd')) {
             e.preventDefault();
@@ -1620,6 +1946,50 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
     content_file.write_text(content_js, encoding="utf-8")
     return ext_dir
 
+
+def install_or_open_browser_extension(browser_name: str = "Google Chrome") -> Path:
+    """
+    Builds the extension directory and:
+    1. Opens Windows Explorer highlighting manifest.json.
+    2. Launches the user's browser with the extensions management page (chrome://extensions etc.).
+    """
+    ext_dir = ensure_browser_extension(0, browser_name)
+    manifest_path = ext_dir / "manifest.json"
+
+    # Open Explorer with file highlighted
+    try:
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer.exe", f"/select,{str(manifest_path.resolve())}"])
+    except Exception:
+        pass
+
+    # Open extension page
+    b_lower = (browser_name or "").lower()
+    ext_url = "chrome://extensions"
+    if "edge" in b_lower:
+        ext_url = "edge://extensions"
+    elif "brave" in b_lower:
+        ext_url = "brave://extensions"
+    elif "firefox" in b_lower:
+        ext_url = "about:addons"
+
+    installed = get_installed_browsers()
+    exe = installed.get(browser_name)
+    if exe and Path(exe).is_file():
+        try:
+            subprocess.Popen([exe, ext_url])
+        except Exception:
+            try:
+                os.startfile(ext_url)
+            except Exception:
+                pass
+    else:
+        try:
+            os.startfile(ext_url)
+        except Exception:
+            pass
+
+    return ext_dir
 
 
 def launch_isolated_browser(
@@ -1709,7 +2079,8 @@ def launch_isolated_browser(
         cmd = [
             exe_path,
             f"--user-data-dir={profile_dir.resolve()}",
-            f"--app={clean_url}",
+            "--new-window",
+            clean_url,
             "--enable-extensions",
             f"--load-extension={ext_path}",
             f"--disable-extensions-except={ext_path}",

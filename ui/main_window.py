@@ -2625,6 +2625,9 @@ class HQVideoDownloaderApp(ctk.CTk):
                         text=f"Batch conversion completed: {success_count} succeeded, {err_count} failed."
                     )
 
+                if not cancelled and success_count > 0:
+                    self._play_completion_sound()
+
             self.after(0, on_all_done)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -5678,12 +5681,24 @@ class HQVideoDownloaderApp(ctk.CTk):
                         )
                     except Exception:
                         pass
+                if not getattr(t, "_completion_sound_played", False):
+                    t._completion_sound_played = True
+                    self._play_completion_sound()
         total = len(self.tasks)
         if hasattr(self, "queue_label"):
             self.queue_label.configure(text=f"{active} active  •  {total} total" if total else "No downloads yet")
         if getattr(self, "_current_page", "") == "dashboard":
             self._refresh_dashboard_metrics()
         self._schedule_refresh()
+
+    def _play_completion_sound(self) -> None:
+        if not getattr(self.settings, "play_sound_on_complete", True):
+            return
+        try:
+            import winsound
+            winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS | winsound.SND_ASYNC)
+        except Exception:
+            pass
 
     # -------------------------------------------------------------
     # Telemetry, Ban Checking & Owner Dashboard Helpers
