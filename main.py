@@ -30,6 +30,54 @@ if sys.platform.startswith("win"):
         pass
 
 
+def check_or_focus_existing_instance() -> bool:
+    """
+    Ensures only a single instance of DeepX Vision Downloader runs at a time.
+    If an instance is already running:
+      1. Pings IPC server on port 18932/18933 to bring existing window to front.
+      2. Uses Win32 Mutex and ShowWindow to restore and focus the running app.
+      3. Returns False so this second process exits cleanly.
+    """
+    if sys.platform != "win32":
+        return True
+
+    import urllib.request
+
+    # 1. Try sending /focus to active IPC server
+    for port in (18932, 18933, 18934, 18935):
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/focus",
+                data=b'{"action":"focus_main"}',
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=0.6) as resp:
+                if resp.getcode() == 200:
+                    return False
+        except Exception:
+            pass
+
+    # 2. Windows Named Mutex Check
+    kernel32 = ctypes.windll.kernel32
+    CreateMutexW = kernel32.CreateMutexW
+    GetLastError = kernel32.GetLastError
+    ERROR_ALREADY_EXISTS = 183
+    MUTEX_NAME = "Global\\DeepX_Vision_Downloader_Pro_Single_Instance_Mutex"
+
+    mutex = CreateMutexW(None, True, MUTEX_NAME)
+    if GetLastError() == ERROR_ALREADY_EXISTS:
+        # Existing instance running - restore and bring to foreground
+        user32 = ctypes.windll.user32
+        hwnd = user32.FindWindowW(None, "DeepX Vision Downloader")
+        if hwnd:
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+            user32.SetForegroundWindow(hwnd)
+        return False
+
+    globals()["_SINGLE_INSTANCE_MUTEX"] = mutex
+    return True
+
+
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "--browser":
         url = sys.argv[2] if len(sys.argv) > 2 and not sys.argv[2].startswith("--") else "https://www.youtube.com"
@@ -82,6 +130,11 @@ def main() -> None:
         url = sys.argv[2] if len(sys.argv) > 2 else ""
         from ui.browser_window import extract_post_media_headless
         extract_post_media_headless(url)
+        return
+
+    # Single Instance Guard: If software is already running, bring existing window to front and exit
+    if not check_or_focus_existing_instance():
+        print("[DeepX Vision] Software is already running. Brought existing window to front.")
         return
 
     settings = SettingsStore().load()

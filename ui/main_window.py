@@ -177,6 +177,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             print(f"[DeepX Vision] IPC server start error: {e}", flush=True)
 
         self._build_shell()
+        self._restore_pending_queue()
         self.show_page("dashboard")
         self._schedule_refresh()
 
@@ -5582,6 +5583,11 @@ class HQVideoDownloaderApp(ctk.CTk):
                 if item:
                     item.destroy()
                 self.tasks.pop(task.id, None)
+            try:
+                from app.queue_store import save_pending_queue
+                save_pending_queue(list(self.tasks.values()))
+            except Exception:
+                pass
 
             if not self.tasks:
                 self.empty_state.pack(expand=True, pady=65)
@@ -5705,6 +5711,16 @@ class HQVideoDownloaderApp(ctk.CTk):
             self.queue_label.configure(text=f"{active} active  •  {total} total" if total else "No downloads yet")
         if getattr(self, "_current_page", "") == "dashboard":
             self._refresh_dashboard_metrics()
+
+        # Persist pending downloads to disk for power outage / crash recovery
+        self._queue_save_counter = getattr(self, "_queue_save_counter", 0) + 1
+        if self._queue_save_counter % 7 == 0:
+            try:
+                from app.queue_store import save_pending_queue
+                save_pending_queue(list(self.tasks.values()))
+            except Exception:
+                pass
+
         self._schedule_refresh()
 
     def _play_completion_sound(self) -> None:
@@ -5719,6 +5735,62 @@ class HQVideoDownloaderApp(ctk.CTk):
     # -------------------------------------------------------------
     # Telemetry, Ban Checking & Owner Dashboard Helpers
     # -------------------------------------------------------------
+    
+
+    def _restore_pending_queue(self) -> None:
+        try:
+            from app.queue_store import load_pending_queue
+            pending = load_pending_queue()
+            if not pending:
+                return
+
+            restored = 0
+            for data in pending:
+                t_id = data.get("id")
+                url = data.get("url")
+                if not url or t_id in self.tasks:
+                    continue
+
+                task = DownloadTask(
+                    url=url,
+                    destination=data.get("destination") or str(self.settings.resolved_download_folder()),
+                    quality=data.get("quality", "Best Quality"),
+                    speed_limit_bps=data.get("speed_limit_bps"),
+                    numbering=data.get("numbering"),
+                    cookies_source=data.get("cookies_source"),
+                    id=t_id,
+                    filename=data.get("filename", "Interrupted Download"),
+                    thumbnail_url=data.get("thumbnail_url", ""),
+                    thumbnail_path=data.get("thumbnail_path", ""),
+                    status=DownloadStatus.PAUSED,
+                    downloaded=data.get("downloaded", 0),
+                    total=data.get("total"),
+                    creator=data.get("creator", ""),
+                    media_id=data.get("media_id", ""),
+                    platform=data.get("platform", ""),
+                )
+                self.tasks[task.id] = task
+                item = DownloadItem(
+                    self.list_frame,
+                    task,
+                    self._cancel,
+                    self._retry,
+                    self._pause,
+                    self._resume,
+                    self._show_task_menu,
+                )
+                item.pack(fill="x", padx=6, pady=5)
+                self.items[task.id] = item
+                restored += 1
+
+            if restored > 0:
+                if hasattr(self, "empty_state"):
+                    self.empty_state.pack_forget()
+                self._filter_task_list()
+                print(f"[DeepX Vision] Restored {restored} unfinished downloads from previous session.", flush=True)
+        except Exception as e:
+            print(f"[DeepX Vision] Error restoring pending queue: {e}", flush=True)
+
     def _init_telemetry_and_ban_check(self) -> None:
         def _check_worker():
             try:
