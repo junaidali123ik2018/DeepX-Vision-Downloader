@@ -223,7 +223,7 @@ class HQVideoDownloaderApp(ctk.CTk):
         if brand_path.is_file():
             try:
                 b_img = Image.open(brand_path)
-                ctk_b = ctk.CTkImage(light_image=b_img, dark_image=b_img, size=(144, 93))
+                ctk_b = ctk.CTkImage(light_image=b_img, dark_image=b_img, size=(144, 76))
                 ctk.CTkLabel(self.sidebar, text="", image=ctk_b).pack(anchor="center", padx=10, pady=(16, 4))
             except Exception:
                 ctk.CTkLabel(
