@@ -1,14 +1,16 @@
 {
-  "version": "2.5.2",
+  "version": "2.5.3",
   "release_date": "2026-10-20",
-  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.5.2/DeepX_Vision_Downloader_Pro_Setup_v2.5.2.exe",
+  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.5.3/DeepX_Vision_Downloader_Pro_Setup_v2.5.3.exe",
   "changelog": [
-    "Windows File Properties Details support: Converted and downloaded videos accurately display 1080p, 720p, 480p resolution and bitrates in Windows Explorer",
-    "Browser Extension Companion for Chrome, Edge, and Brave with 1-click video card download buttons and toolbar popup",
+    "Complete Modern Pro UI Overhaul with Midnight Obsidian & Electric Azure high-contrast design",
+    "Enhanced sidebar navigation with vibrant active tab pill highlights and muted inactive states",
+    "Polished Dashboard, Media Converter, and Downloads layout with refined card borders and uniform padding",
+    "Dynamic theme harmonization across Settings, Dialogs, and Modals with smooth Light and Dark mode contrast",
+    "Windows File Properties Details support: Converted and downloaded videos accurately display resolution and bitrates in Windows Explorer",
+    "Browser Extension Companion for Chrome, Edge, and Brave with 1-click video card download buttons",
     "Single-Instance protection: Automatically restores and focuses running window when reopened",
-    "Persistent download queue: Interrupted downloads safely recover and resume after power outage or reboot",
-    "Audio chime sound notification on download and conversion completion with settings toggle",
-    "Automated 1-click auto-replace updater without cmd flash"
+    "Persistent download queue: Interrupted downloads safely recover and resume after power outage or reboot"
   ],
   "mandatory": false
 }
