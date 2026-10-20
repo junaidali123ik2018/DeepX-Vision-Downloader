@@ -69,19 +69,19 @@ from ui.license_dialog import LicenseDialog
 from ui.update_modal import UpdateModal
 import webbrowser
 
-# Unified Color Palette with Consistent Dark & Light Mode Contrast
+# Unified Modern Pro Palette (Deep Obsidian Sapphire & Crisp High-Contrast)
 BLUE = ("#2563EB", "#3B82F6")
 BLUE_HOVER = ("#1D4ED8", "#2563EB")
-SIDEBAR = ("#1E40AF", "#0F172A")
+SIDEBAR = ("#0F172A", "#0A0F1D")
 INK = ("#0F172A", "#F8FAFC")
 MUTED = ("#64748B", "#94A3B8")
-SURFACE = ("#FFFFFF", "#1E293B")
-BACKGROUND = ("#F8FAFC", "#0B0F19")
-BORDER = ("#E2E8F0", "#334155")
-SECONDARY_BTN = ("#EEF2F6", "#26354D")
-SECONDARY_BTN_HOVER = ("#E2E8F0", "#334464")
-DANGER_BTN = ("#FEE2E2", "#451A1A")
-DANGER_BTN_HOVER = ("#FECACA", "#5F2222")
+SURFACE = ("#FFFFFF", "#141D2E")
+BACKGROUND = ("#F8FAFC", "#0C111C")
+BORDER = ("#E2E8F0", "#212E46")
+SECONDARY_BTN = ("#EEF2F6", "#192438")
+SECONDARY_BTN_HOVER = ("#E2E8F0", "#24334E")
+DANGER_BTN = ("#FEE2E2", "#38171B")
+DANGER_BTN_HOVER = ("#FECACA", "#4D1F25")
 DANGER_TEXT = ("#DC2626", "#F87171")
 
 QUALITY_OPTIONS = [
@@ -601,7 +601,7 @@ class HQVideoDownloaderApp(ctk.CTk):
         ).pack(anchor="w", padx=20, pady=(0, 14))
 
         # Main Hero Input Bar
-        input_card = ctk.CTkFrame(hero, corner_radius=10, fg_color=("#F1F5F9", "#131D30"), border_width=1, border_color=BORDER)
+        input_card = ctk.CTkFrame(hero, corner_radius=10, fg_color=("#F1F5F9", "#0F1626"), border_width=1, border_color=BORDER)
         input_card.pack(fill="x", padx=20, pady=(0, 12))
 
         ctk.CTkLabel(input_card, text="🔗", font=ctk.CTkFont(size=14), text_color=BLUE).pack(side="left", padx=(12, 6))
@@ -707,8 +707,8 @@ class HQVideoDownloaderApp(ctk.CTk):
             width=105,
             height=26,
             corner_radius=6,
-            fg_color=("#1E293B", "#1E293B"),
-            hover_color="#2563EB",
+            fg_color=SECONDARY_BTN,
+            hover_color=SECONDARY_BTN_HOVER,
             text_color=BLUE,
             font=ctk.CTkFont(size=11, weight="bold"),
             command=self._go_to_downloads,
@@ -823,7 +823,7 @@ class HQVideoDownloaderApp(ctk.CTk):
         )
         icon_lbl.pack(side="left")
 
-        bg_c = "#FFFFFF" if ctk.get_appearance_mode() == "Light" else "#1E293B"
+        bg_c = "#FFFFFF" if ctk.get_appearance_mode() == "Light" else SURFACE[1]
         canvas = Canvas(top_row, width=70, height=28, bg=bg_c, highlightthickness=0)
         canvas.pack(side="right")
         if not hasattr(self, "_spark_canvases"):
@@ -938,7 +938,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             self.dash_empty_state.pack_forget()
 
         for rec in recent:
-            item_row = ctk.CTkFrame(self.dash_recent_list_frame, corner_radius=8, fg_color=("#F8FAFC", "#0F172A"), border_width=1, border_color=BORDER)
+            item_row = ctk.CTkFrame(self.dash_recent_list_frame, corner_radius=8, fg_color=SURFACE, border_width=1, border_color=BORDER)
             item_row.pack(fill="x", padx=4, pady=3)
 
             p_color = "#3B82F6"
@@ -1038,7 +1038,7 @@ class HQVideoDownloaderApp(ctk.CTk):
         input_card = ctk.CTkFrame(
             top_card,
             corner_radius=8,
-            fg_color=("#F1F5F9", "#131D30"),
+            fg_color=("#F1F5F9", "#0F1626"),
             border_width=1,
             border_color=BORDER,
         )
@@ -1204,7 +1204,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             corner_radius=8,
             border_width=1,
             border_color=BORDER,
-            fg_color=("#F8FAFC", "#131C2E"),
+            fg_color=("#F8FAFC", "#0F1626"),
             text_color=MUTED,
             font=ctk.CTkFont(size=12),
         )
@@ -1320,7 +1320,7 @@ class HQVideoDownloaderApp(ctk.CTk):
         self.list_frame = ctk.CTkScrollableFrame(
             self.download_page,
             corner_radius=12,
-            fg_color=("#F8FAFC", "#0F172A"),
+            fg_color=BACKGROUND,
             border_width=1,
             border_color=BORDER,
         )
@@ -4138,7 +4138,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             corner_radius=6,
             border_width=1,
             border_color=BORDER,
-            fg_color=("#F8FAFC", "#0F172A"),
+            fg_color=("#F8FAFC", "#0F1626"),
             text_color=INK,
             font=ctk.CTkFont(size=12),
         )
@@ -4211,7 +4211,7 @@ class HQVideoDownloaderApp(ctk.CTk):
                 width=112,
                 height=96,
                 corner_radius=12,
-                fg_color=("#F8FAFC", "#0F172A"),
+                fg_color=("#F8FAFC", "#0F1626"),
                 border_width=1,
                 border_color=BORDER,
             )
@@ -4438,7 +4438,10 @@ class HQVideoDownloaderApp(ctk.CTk):
         active.grid(row=0, column=0, sticky="nsew")
         self.title_label.configure(text=title_text)
         for name, button in self.nav_buttons.items():
-            button.configure(fg_color="#2563EB" if name == page else "transparent")
+            if name == page:
+                button.configure(fg_color="#2563EB", text_color="#FFFFFF")
+            else:
+                button.configure(fg_color="transparent", text_color="#94A3B8")
 
     def _go_to_downloads(self) -> None:
         self.show_page("downloads")
@@ -4675,7 +4678,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             self.theme_var.set(clean)
 
         detected = ctk.get_appearance_mode()
-        c_bg = "#FFFFFF" if detected == "Light" else "#1E293B"
+        c_bg = "#FFFFFF" if detected == "Light" else SURFACE[1]
         if hasattr(self, "_spark_canvases"):
             for c in self._spark_canvases:
                 try:

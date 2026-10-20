@@ -11,36 +11,35 @@ from PIL import Image
 from app.models import DownloadStatus, DownloadTask
 from app.utils import format_bytes, format_eta, format_speed
 
-ITEM_SURFACE = ("#FFFFFF", "#1E2738")
-ITEM_BORDER = ("#E2E8F0", "#2D3B52")
-TEXT_PRIMARY = ("#18233B", "#F3F6FF")
-TEXT_MUTED = ("#71809B", "#A0AEC0")
+ITEM_SURFACE = ("#FFFFFF", "#141D2E")
+ITEM_BORDER = ("#E2E8F0", "#212E46")
+TEXT_PRIMARY = ("#0F172A", "#F8FAFC")
+TEXT_MUTED = ("#64748B", "#94A3B8")
 
-BLUE_BG = ("#E8F0FF", "#1A2B4C")
+BLUE_BG = ("#EFF6FF", "#13233C")
 BLUE_FG = ("#2563EB", "#60A5FA")
-BLUE_BTN = ("#EDF2FF", "#223354")
-BLUE_BTN_HOVER = ("#DDE8FF", "#2C426E")
+BLUE_BTN = ("#EFF6FF", "#18263E")
+BLUE_BTN_HOVER = ("#DBEAFE", "#23385C")
 BLUE_BTN_TEXT = ("#2563EB", "#60A5FA")
 
-PAUSE_BG = ("#FFF8E6", "#3D2E14")
+PAUSE_BG = ("#FEF3C7", "#2D2211")
 PAUSE_FG = ("#D97706", "#FBBF24")
-PAUSE_BTN = ("#FFF8E6", "#3D2E14")
-PAUSE_BTN_HOVER = ("#FEF08A", "#533E1A")
+PAUSE_BTN = ("#FEF3C7", "#2D2211")
+PAUSE_BTN_HOVER = ("#FDE68A", "#423219")
 PAUSE_BTN_TEXT = ("#B45309", "#FBBF24")
 
-DONE_BG = ("#ECFDF5", "#133527")
+DONE_BG = ("#ECFDF5", "#0F2E20")
 DONE_FG = ("#16A34A", "#4ADE80")
 
-FOLDER_BTN = ("#EEF2FF", "#1E293B")
-FOLDER_BTN_HOVER = ("#E0E7FF", "#2D3B52")
+FOLDER_BTN = ("#EFF6FF", "#18263E")
+FOLDER_BTN_HOVER = ("#DBEAFE", "#23385C")
 FOLDER_BTN_TEXT = ("#2563EB", "#60A5FA")
 
-DANGER_BG = ("#FEF2F2", "#3E1C1F")
+DANGER_BG = ("#FEF2F2", "#38171B")
 DANGER_FG = ("#DC2626", "#F87171")
-DANGER_BTN = ("#FEE2E2", "#3E1C1F")
-DANGER_BTN_HOVER = ("#FECACA", "#552428")
-DANGER_BTN_TEXT = ("#DC2626", "#F87171")
-
+DANGER_BTN = ("#FEF2F2", "#38171B")
+DANGER_BTN_HOVER = ("#FEE2E2", "#4D1F25")
+DANGER_TEXT = ("#DC2626", "#F87171")
 
 class DownloadItem(ctk.CTkFrame):
     """A calm, dashboard-style row for one queued download with thumbnail preview."""
@@ -89,7 +88,7 @@ class DownloadItem(ctk.CTkFrame):
         self.details.grid(row=1, column=1, sticky="ew", pady=(0, 10))
 
         # Progress bar
-        self.progress = ctk.CTkProgressBar(self, height=6, corner_radius=6, progress_color="#2563EB", fg_color=("#E2E8F0", "#2D3B52"))
+        self.progress = ctk.CTkProgressBar(self, height=6, corner_radius=6, progress_color=BLUE_FG, fg_color=("#E2E8F0", "#1C273C"))
         self.progress.grid(row=2, column=0, columnspan=3, sticky="ew", padx=12, pady=(0, 10))
         self.progress.set(0)
 

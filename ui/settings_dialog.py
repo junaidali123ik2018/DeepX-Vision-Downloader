@@ -12,6 +12,16 @@ from app.updater import check_for_updates, update_core_engine_ytdlp
 from app.version import APP_NAME, APP_EDITION, APP_VERSION
 from ui.update_modal import UpdateModal
 
+# Settings Dialog Theme Palette
+SET_BG = ("#F8FAFC", "#0C111C")
+SET_SIDEBAR = ("#0F172A", "#0A0F1D")
+SET_CARD = ("#FFFFFF", "#141D2E")
+SET_BORDER = ("#E2E8F0", "#212E46")
+SET_INK = ("#0F172A", "#F8FAFC")
+SET_MUTED = ("#64748B", "#94A3B8")
+SET_BTN_SEC = ("#EEF2F6", "#192438")
+SET_BTN_SEC_HOVER = ("#E2E8F0", "#24334E")
+
 
 def is_platform_cookie_authenticated(platform: str, path_or_src: str | Path | None) -> bool:
     """Verifies that a cookie file actually contains valid authentication session cookies rather than guest/anonymous cookies."""
@@ -66,9 +76,9 @@ class SettingsDialog(ctk.CTkToplevel):
         self.on_save = on_save
 
         self.title("Settings")
-        self.geometry("740x520")
+        self.geometry("760x560")
         self.resizable(False, False)
-        self.configure(fg_color="#111827")
+        self.configure(fg_color=SET_BG)
         self.transient(parent)
         self.grab_set()
 
@@ -77,12 +87,12 @@ class SettingsDialog(ctk.CTkToplevel):
         self.grid_rowconfigure(0, weight=1)
 
         # Left Tabs Sidebar
-        self.sidebar = ctk.CTkFrame(self, width=160, corner_radius=0, fg_color="#182234")
+        self.sidebar = ctk.CTkFrame(self, width=160, corner_radius=0, fg_color=SET_SIDEBAR)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
 
         # Right Content Container
-        self.content_area = ctk.CTkFrame(self, fg_color="#111827", corner_radius=0)
+        self.content_area = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
         self.content_area.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
         self.content_area.grid_columnconfigure(0, weight=1)
         self.content_area.grid_rowconfigure(0, weight=1)
@@ -101,7 +111,7 @@ class SettingsDialog(ctk.CTkToplevel):
             self.sidebar,
             text="Settings",
             font=ctk.CTkFont(size=16, weight="bold"),
-            text_color="#F8FAFC",
+            text_color=SET_INK,
         ).pack(anchor="w", padx=16, pady=(20, 16))
 
         for key, icon, name in items:
@@ -146,17 +156,17 @@ class SettingsDialog(ctk.CTkToplevel):
         page = ctk.CTkFrame(self.content_area, fg_color="transparent")
         self.pages["basic"] = page
 
-        ctk.CTkLabel(page, text="Basic Settings", font=ctk.CTkFont(size=18, weight="bold"), text_color="#F8FAFC").pack(
+        ctk.CTkLabel(page, text="Basic Settings", font=ctk.CTkFont(size=18, weight="bold"), text_color=SET_INK).pack(
             anchor="w", pady=(0, 16)
         )
 
-        card = ctk.CTkFrame(page, fg_color="#1E293B", corner_radius=10)
+        card = ctk.CTkFrame(page, fg_color=SET_CARD, border_width=1, border_color=SET_BORDER, corner_radius=10)
         card.pack(fill="x", pady=6)
 
         # Language
         lang_row = ctk.CTkFrame(card, fg_color="transparent")
         lang_row.pack(fill="x", padx=16, pady=12)
-        ctk.CTkLabel(lang_row, text="Language", text_color="#F8FAFC", font=ctk.CTkFont(size=13, weight="bold")).pack(
+        ctk.CTkLabel(lang_row, text="Language", text_color=SET_INK, font=ctk.CTkFont(size=13, weight="bold")).pack(
             side="left"
         )
         ctk.CTkOptionMenu(
@@ -170,7 +180,7 @@ class SettingsDialog(ctk.CTkToplevel):
         # Appearance Mode (Dark / Light / System)
         theme_row = ctk.CTkFrame(card, fg_color="transparent")
         theme_row.pack(fill="x", padx=16, pady=(0, 12))
-        ctk.CTkLabel(theme_row, text="Appearance Mode", text_color="#F8FAFC", font=ctk.CTkFont(size=13, weight="bold")).pack(
+        ctk.CTkLabel(theme_row, text="Appearance Mode", text_color=SET_INK, font=ctk.CTkFont(size=13, weight="bold")).pack(
             side="left"
         )
         self.theme_var = ctk.StringVar(value=self.settings.appearance_mode.title())
@@ -185,10 +195,10 @@ class SettingsDialog(ctk.CTkToplevel):
         ).pack(side="right")
 
         # App Settings checkboxes
-        app_set = ctk.CTkFrame(page, fg_color="#1E293B", corner_radius=10)
+        app_set = ctk.CTkFrame(page, fg_color=SET_CARD, border_width=1, border_color=SET_BORDER, corner_radius=10)
         app_set.pack(fill="x", pady=12)
 
-        ctk.CTkLabel(app_set, text="App Settings", text_color="#F8FAFC", font=ctk.CTkFont(size=13, weight="bold")).pack(
+        ctk.CTkLabel(app_set, text="App Settings", text_color=SET_INK, font=ctk.CTkFont(size=13, weight="bold")).pack(
             anchor="w", padx=16, pady=(12, 8)
         )
 
@@ -233,7 +243,7 @@ class SettingsDialog(ctk.CTkToplevel):
         ).pack(anchor="w", padx=16, pady=(6, 16))
 
         # Browser Engine Configuration (Dedicated Isolated App Profile)
-        browser_card = ctk.CTkFrame(page, fg_color="#1E293B", corner_radius=10)
+        browser_card = ctk.CTkFrame(page, fg_color=SET_CARD, border_width=1, border_color=SET_BORDER, corner_radius=10)
         browser_card.pack(fill="x", pady=6)
 
         header_row = ctk.CTkFrame(browser_card, fg_color="transparent")
@@ -241,7 +251,7 @@ class SettingsDialog(ctk.CTkToplevel):
         ctk.CTkLabel(
             header_row,
             text="🌐 In-App Browser Engine & Extension",
-            text_color="#F8FAFC",
+            text_color=SET_INK,
             font=ctk.CTkFont(family="Times New Roman", size=13, weight="bold"),
         ).pack(side="left")
 
@@ -392,11 +402,11 @@ class SettingsDialog(ctk.CTkToplevel):
         page = ctk.CTkFrame(self.content_area, fg_color="transparent")
         self.pages["download"] = page
 
-        ctk.CTkLabel(page, text="Download Preferences", font=ctk.CTkFont(size=18, weight="bold"), text_color="#F8FAFC").pack(
+        ctk.CTkLabel(page, text="Download Preferences", font=ctk.CTkFont(size=18, weight="bold"), text_color=SET_INK).pack(
             anchor="w", pady=(0, 16)
         )
 
-        card = ctk.CTkFrame(page, fg_color="#1E293B", corner_radius=10)
+        card = ctk.CTkFrame(page, fg_color=SET_CARD, border_width=1, border_color=SET_BORDER, corner_radius=10)
         card.pack(fill="x", pady=6)
 
         # Folder row
@@ -404,7 +414,7 @@ class SettingsDialog(ctk.CTkToplevel):
         f_row.pack(fill="x", padx=16, pady=12)
         ctk.CTkLabel(f_row, text="Save location :", text_color="#94A3B8").pack(side="left")
         self.folder_var = ctk.StringVar(value=str(self.settings.resolved_download_folder()))
-        ctk.CTkEntry(f_row, textvariable=self.folder_var, height=30, fg_color="#111827", text_color="#F8FAFC").pack(
+        ctk.CTkEntry(f_row, textvariable=self.folder_var, height=30, fg_color="#111827", text_color=SET_INK).pack(
             side="left", fill="x", expand=True, padx=8
         )
         ctk.CTkButton(
@@ -464,7 +474,7 @@ class SettingsDialog(ctk.CTkToplevel):
         page = ctk.CTkFrame(self.content_area, fg_color="transparent")
         self.pages["auth"] = page
 
-        ctk.CTkLabel(page, text="Authorization", font=ctk.CTkFont(size=18, weight="bold"), text_color="#F8FAFC").pack(
+        ctk.CTkLabel(page, text="Authorization", font=ctk.CTkFont(size=18, weight="bold"), text_color=SET_INK).pack(
             anchor="w", pady=(0, 4)
         )
 
@@ -478,7 +488,7 @@ class SettingsDialog(ctk.CTkToplevel):
         ).pack(anchor="w", pady=(0, 14))
 
         # Platform list card
-        card = ctk.CTkFrame(page, fg_color="#1E293B", corner_radius=10)
+        card = ctk.CTkFrame(page, fg_color=SET_CARD, border_width=1, border_color=SET_BORDER, corner_radius=10)
         card.pack(fill="both", expand=True)
 
         platforms = [
@@ -514,7 +524,7 @@ class SettingsDialog(ctk.CTkToplevel):
                 row,
                 text=f"  {name}",
                 font=ctk.CTkFont(size=13, weight="bold"),
-                text_color="#F8FAFC",
+                text_color=SET_INK,
             )
             name_lbl.pack(side="left")
 
@@ -596,7 +606,7 @@ class SettingsDialog(ctk.CTkToplevel):
         choice_win.title(f"Authorize {name}")
         choice_win.geometry("440x350")
         choice_win.resizable(False, False)
-        choice_win.configure(fg_color="#1E293B")
+        choice_win.configure(fg_color=SET_CARD)
         choice_win.transient(self)
         choice_win.grab_set()
 
@@ -604,7 +614,7 @@ class SettingsDialog(ctk.CTkToplevel):
             choice_win,
             text=f"Authorize {name}",
             font=ctk.CTkFont(size=16, weight="bold"),
-            text_color="#F8FAFC",
+            text_color=SET_INK,
         ).pack(pady=(16, 6))
 
         ctk.CTkLabel(
@@ -719,11 +729,11 @@ class SettingsDialog(ctk.CTkToplevel):
         self._build_license_tab_content(page)
 
     def _build_license_tab_content(self, page: ctk.CTkFrame) -> None:
-        ctk.CTkLabel(page, text="License & Pro Edition", font=ctk.CTkFont(size=18, weight="bold"), text_color="#F8FAFC").pack(
+        ctk.CTkLabel(page, text="License & Pro Edition", font=ctk.CTkFont(size=18, weight="bold"), text_color=SET_INK).pack(
             anchor="w", pady=(0, 16)
         )
 
-        card = ctk.CTkFrame(page, fg_color="#1E293B", corner_radius=10)
+        card = ctk.CTkFrame(page, fg_color=SET_CARD, border_width=1, border_color=SET_BORDER, corner_radius=10)
         card.pack(fill="x", pady=6)
 
         # Current Status
@@ -812,10 +822,10 @@ class SettingsDialog(ctk.CTkToplevel):
 
         else:
             # License Key entry for Trial users
-            k_card = ctk.CTkFrame(page, fg_color="#1E293B", corner_radius=10)
+            k_card = ctk.CTkFrame(page, fg_color=SET_CARD, border_width=1, border_color=SET_BORDER, corner_radius=10)
             k_card.pack(fill="x", pady=10)
 
-            ctk.CTkLabel(k_card, text="Enter License Key:", font=ctk.CTkFont(size=12, weight="bold"), text_color="#F8FAFC").pack(anchor="w", padx=16, pady=(12, 4))
+            ctk.CTkLabel(k_card, text="Enter License Key:", font=ctk.CTkFont(size=12, weight="bold"), text_color=SET_INK).pack(anchor="w", padx=16, pady=(12, 4))
 
             key_input_row = ctk.CTkFrame(k_card, fg_color="transparent")
             key_input_row.pack(fill="x", padx=16, pady=(0, 14))
@@ -871,18 +881,18 @@ class SettingsDialog(ctk.CTkToplevel):
         page = ctk.CTkFrame(self.content_area, fg_color="transparent")
         self.pages["about"] = page
 
-        ctk.CTkLabel(page, text="About", font=ctk.CTkFont(size=18, weight="bold"), text_color="#F8FAFC").pack(
+        ctk.CTkLabel(page, text="About", font=ctk.CTkFont(size=18, weight="bold"), text_color=SET_INK).pack(
             anchor="w", pady=(0, 16)
         )
 
-        card = ctk.CTkFrame(page, fg_color="#1E293B", corner_radius=10)
+        card = ctk.CTkFrame(page, fg_color=SET_CARD, border_width=1, border_color=SET_BORDER, corner_radius=10)
         card.pack(fill="both", expand=True, padx=4, pady=4)
 
         ctk.CTkLabel(
             card,
             text=APP_NAME,
             font=ctk.CTkFont(size=17, weight="bold"),
-            text_color="#F8FAFC",
+            text_color=SET_INK,
         ).pack(pady=(20, 2))
 
         ctk.CTkLabel(card, text=f"Version {APP_VERSION} ({APP_EDITION})", text_color="#38BDF8", font=ctk.CTkFont(size=12, weight="bold")).pack(
