@@ -1,13 +1,14 @@
 {
-  "version": "2.5.1",
-  "release_date": "2026-09-29",
-  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.5.1/DeepX_Vision_Downloader_Pro_Setup_v2.5.1.exe",
+  "version": "2.5.2",
+  "release_date": "2026-10-20",
+  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.5.2/DeepX_Vision_Downloader_Pro_Setup_v2.5.2.exe",
   "changelog": [
-    "Smart Fast Pagination: 1,000+ video channels load instantaneously in 0.02s",
-    "Global Select All / Deselect All across all pages in batch video selector",
-    "High-Performance State Caching: 0% CPU lag with 500+ videos queued (Not Responding fix)",
-    "Adaptive Window Sizing: Modal fits comfortably on all screen resolutions and laptop displays",
-    "Enhanced CDN Referer headers for instant TikTok, Instagram, and YouTube thumbnails"
+    "Windows File Properties Details support: Converted and downloaded videos accurately display 1080p, 720p, 480p resolution and bitrates in Windows Explorer",
+    "Browser Extension Companion for Chrome, Edge, and Brave with 1-click video card download buttons and toolbar popup",
+    "Single-Instance protection: Automatically restores and focuses running window when reopened",
+    "Persistent download queue: Interrupted downloads safely recover and resume after power outage or reboot",
+    "Audio chime sound notification on download and conversion completion with settings toggle",
+    "Automated 1-click auto-replace updater without cmd flash"
   ],
   "mandatory": false
 }
