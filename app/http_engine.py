@@ -40,6 +40,8 @@ DIRECT_EXTENSIONS = {
 def is_direct_file_url(url: str) -> bool:
     """Check if URL points to a standard direct file download."""
     try:
+        if "googlevideo.com" in url or "/videoplayback" in url:
+            return True
         parsed = urllib.parse.urlparse(url)
         path = parsed.path.lower()
         ext = os.path.splitext(path)[1]

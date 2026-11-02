@@ -838,6 +838,33 @@ class BrowserIPCServer:
     def start(self) -> int:
         outer = self
 
+        def _save_raw_cookie_header(raw_cookie: str, target_url: str) -> str:
+            if not raw_cookie or len(raw_cookie) < 5:
+                return ""
+            try:
+                domain = ".youtube.com"
+                if target_url:
+                    from urllib.parse import urlparse
+                    p_host = urlparse(target_url).hostname
+                    if p_host:
+                        domain = "." + p_host.lstrip(".")
+                c_dir = get_browser_data_dir() / "cookies"
+                c_dir.mkdir(parents=True, exist_ok=True)
+                c_file = c_dir / "active_extension_cookies.txt"
+                lines = [
+                    "# Netscape HTTP Cookie File",
+                    "# Captured by DeepX Vision Downloader Extension",
+                    ""
+                ]
+                for item in raw_cookie.split(";"):
+                    if "=" in item:
+                        k, v = item.strip().split("=", 1)
+                        lines.append(f"{domain}\tTRUE\t/\tTRUE\t2147483647\t{k}\t{v}")
+                c_file.write_text("\n".join(lines), encoding="utf-8")
+                return str(c_file)
+            except Exception:
+                return ""
+
         class IPCHandler(http.server.BaseHTTPRequestHandler):
             def _send_cors_headers(self, code=200):
                 self.send_response(code)
@@ -863,28 +890,49 @@ class BrowserIPCServer:
                     raw_body = self.rfile.read(content_len).decode("utf-8") if content_len > 0 else "{}"
                     data = json.loads(raw_body) if raw_body else {}
                     
-                    if self.path == "/download":
+                    if self.path in ("/download", "/downloads"):
                         url = data.get("url", "")
+                        referer = data.get("referer", "")
+                        sabr = data.get("sabr")
+                        request_headers = data.get("requestHeaders") or data.get("headers") or {}
+                        
                         cookies_path = data.get("cookies_path", "")
-                        title = data.get("title", "")
+                        raw_cookie = request_headers.get("cookie", "")
+                        if raw_cookie:
+                            try:
+                                cookies_path = _save_raw_cookie_header(raw_cookie, url or referer)
+                            except Exception:
+                                pass
+
+                        canonical_url = url
+                        if sabr and isinstance(sabr, dict) and sabr.get("videoId"):
+                            canonical_url = f"https://www.youtube.com/watch?v={sabr.get('videoId')}"
+                        elif referer and ("youtube.com" in referer or "youtu.be" in referer):
+                            canonical_url = referer
+                        elif not canonical_url and referer:
+                            canonical_url = referer
+
+                        title = data.get("filename") or data.get("title") or ""
                         browser = data.get("browser", "")
-                        media_type = data.get("media_type", "video")
-                        quality = data.get("quality", "Best Available")
+                        output_fmt = (data.get("outputFormat") or "").lower()
+                        media_type = "audio" if output_fmt == "mp3" else data.get("media_type", "video")
+                        quality = data.get("youtubeFormat") or data.get("quality") or "Best Available"
+
                         if browser:
                             try:
                                 sync_profile_cookies_to_files(browser)
                             except Exception:
                                 pass
-                        if url and outer.on_download:
+                        if canonical_url and outer.on_download:
                             try:
-                                outer.on_download(url, cookies_path, title, media_type, quality)
+                                outer.on_download(canonical_url, cookies_path, title, media_type, quality)
                             except TypeError:
                                 try:
-                                    outer.on_download(url, cookies_path, title, media_type)
+                                    outer.on_download(canonical_url, cookies_path, title, media_type)
                                 except TypeError:
-                                    outer.on_download(url, cookies_path, title)
+                                    outer.on_download(canonical_url, cookies_path, title)
                         self._send_cors_headers(200)
-                        self.wfile.write(b'{"status":"ok"}')
+                        self.wfile.write(b'{"ok":true,"status":"ok","id":"deepx_dl"}')
                         return
 
                     elif self.path == "/sync_cookies":
@@ -2134,13 +2182,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         bar.className = 'deepx-idm-video-bar';
         bar.title = 'DeepX Vision - Download Video';
 
-        const mainBtn = document.createElement('div');
-        mainBtn.className = 'deepx-idm-main-btn';
-        mainBtn.innerHTML = '<span>⚡</span> <span>Download this video</span>';
+        const mainBtn = document.createElement('button');
+        mainBtn.className = 'deepx-idm-main-btn download';
+        mainBtn.type = 'button';
+        mainBtn.innerHTML = '↓ Download this video ▾';
 
-        const arrowBtn = document.createElement('div');
-        arrowBtn.className = 'deepx-idm-arrow-btn';
-        arrowBtn.textContent = '▼';
+        const arrowBtn = document.createElement('button');
+        arrowBtn.className = 'deepx-idm-arrow-btn dismiss';
+        arrowBtn.type = 'button';
+        arrowBtn.title = 'Hide this download panel';
+        arrowBtn.textContent = '×';
 
         const dropdown = document.createElement('div');
         dropdown.className = 'deepx-idm-dropdown';

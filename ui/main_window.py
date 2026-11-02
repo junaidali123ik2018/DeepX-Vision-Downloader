@@ -4349,7 +4349,7 @@ class HQVideoDownloaderApp(ctk.CTk):
                 except Exception:
                     pass
 
-            self._queue_urls([url])
+            self._queue_urls([url], cookies_source=cookies_path, custom_title=title, quality_override=quality)
             self.show_page("downloads")
             try:
                 self.deiconify()
@@ -5369,7 +5369,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             done_event.wait()
             return result_holder[0]
 
-    def _queue_urls(self, urls: list[str]) -> bool:
+    def _queue_urls(self, urls: list[str], cookies_source: str = "", custom_title: str = "", quality_override: str = "") -> bool:
         if not self._check_device_not_banned():
             return False
 
@@ -5458,14 +5458,18 @@ class HQVideoDownloaderApp(ctk.CTk):
 
         has_multiple = len(items_to_download) > 1
         for num, (url, is_dup) in enumerate(items_to_download, 1):
-            cookie_src = self._get_cookie_source_for_url(url)
+            cookie_src = cookies_source or self._get_cookie_source_for_url(url)
             p, mid, creator, _ = extract_media_identity(url)
             item_numbering = num if has_multiple else None
-            initial_filename = f"{item_numbering:02d}. Analyzing video…" if item_numbering else "Analyzing video…"
+            if custom_title:
+                initial_filename = custom_title
+            else:
+                initial_filename = f"{item_numbering:02d}. Analyzing video…" if item_numbering else "Analyzing video…"
+            task_quality = quality_override or selected_quality
             task = DownloadTask(
                 url=url,
                 destination=base_dest,
-                quality=selected_quality,
+                quality=task_quality,
                 speed_limit_bps=speed_limit,
                 cookies_source=cookie_src,
                 filename=initial_filename,

@@ -398,10 +398,16 @@ class DownloadManager:
                 try:
                     if is_custom_site_url(task.url):
                         info = resolve_custom_media(task.url, desired_quality=task.quality)
+                    elif task.filename and not task.filename.startswith("Analyzing"):
+                        raw_title = task.filename
+                        with task.lock:
+                            task.status = DownloadStatus.DOWNLOADING
+                        self._notify(task)
+                        info = downloader.extract_info(task.url, download=False)
                     else:
                         info = downloader.extract_info(task.url, download=False)
                     if info:
-                        raw_title = info.get("title", "")
+                        raw_title = info.get("title", "") or raw_title
                         platform, mid, creator, _ = extract_media_identity(task.url, info)
                         task.platform = platform
                         task.media_id = mid
@@ -411,7 +417,8 @@ class DownloadManager:
                         if task.thumbnail_url:
                             self._cache_thumbnail(task, task.thumbnail_url)
                 except Exception:
-                    pass
+                    if task.filename and not task.filename.startswith("Analyzing"):
+                        raw_title = task.filename
 
                 if task.cancel_event.is_set():
                     raise DownloadCancelled()
