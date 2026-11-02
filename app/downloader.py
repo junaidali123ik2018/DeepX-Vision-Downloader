@@ -377,13 +377,24 @@ class DownloadManager:
             else:
                 options["cookiesfrombrowser"] = (cookie_src,)
 
+        # Forward custom browser headers from extension
+        if getattr(task, "http_headers", None):
+            options.setdefault("http_headers", {}).update(task.http_headers)
+        if getattr(task, "referer", ""):
+            options["referer"] = task.referer
+
         # Fast-Path: IDM-Style High-Performance Multi-Segment HTTP Engine for direct files
-        if is_direct_file_url(task.url):
+        if is_direct_file_url(task.url, task.filename) or getattr(task, "http_headers", None):
             try:
                 if download_segmented_http_task(task, self._notify, num_connections=10):
                     return
             except Exception:
                 pass
+            # Reset status if fast-path failed so yt-dlp fallback can run cleanly
+            with task.lock:
+                task.status = DownloadStatus.DOWNLOADING
+                task.error = ""
+            self._notify(task)
 
         target_file = Path(task.destination) / "output.mp4"
         clean_title = task.filename

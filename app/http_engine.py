@@ -3,10 +3,13 @@ DeepX Vision Downloader - High-Performance IDM-Style HTTP Multi-Segment Engine
 Inspired by and adapted from Awesome Downloader & IDM architecture.
 
 Features:
-- Pre-flight URL probing (HEAD / Range: bytes=0-0)
-- Content-Length, Content-Disposition (filename), ETag validation
+- Pre-flight URL probing (HEAD / Range: bytes=0-0) with full browser header forwarding
+- Support for session cookies, Referer, and User-Agent from extension / browser
+- Content-Length, Content-Disposition (UTF-8 filename), ETag validation
 - Dynamic multi-connection segmentation (8 to 16 concurrent HTTP Range workers)
 - Chunk assembly with zero-RAM sequential streaming
+- Single-stream fallback for non-range servers
+- Anti-bot / Cloudflare fallback via curl_cffi Chrome impersonation
 - Full Pause, Resume, and Cancel support
 - Real-time aggregated speed calculation and progress telemetry
 """
@@ -15,13 +18,15 @@ from __future__ import annotations
 
 import os
 import re
+import ssl
 import time
 import urllib.parse
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from threading import Lock
 from typing import Callable, Optional
+
+import requests
 
 from app.models import DownloadStatus, DownloadTask
 from app.path_manager import sanitize_filename
@@ -30,86 +35,187 @@ from app.download_history import DownloadRecord, history_store
 DIRECT_EXTENSIONS = {
     ".zip", ".rar", ".7z", ".tar", ".gz", ".iso", ".bz2", ".xz",
     ".exe", ".msi", ".apk", ".dmg", ".pkg", ".deb", ".rpm",
-    ".mp4", ".mkv", ".mov", ".avi", ".wmv", ".webm", ".flv",
-    ".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a",
+    ".mp4", ".mkv", ".mov", ".avi", ".wmv", ".webm", ".flv", ".m4v", ".ts", ".m3u8",
+    ".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".opus",
     ".pdf", ".epub", ".docx", ".xlsx", ".pptx", ".txt",
-    ".bin", ".img"
+    ".bin", ".img", ".iso"
 }
 
+KNOWN_VIDEO_PLATFORMS = {
+    "youtube.com", "youtu.be", "tiktok.com", "douyin.com",
+    "instagram.com", "twitter.com", "x.com", "facebook.com", "fb.watch",
+    "vimeo.com", "dailymotion.com", "twitch.tv", "reddit.com", "bilibili.com"
+}
 
-def is_direct_file_url(url: str) -> bool:
-    """Check if URL points to a standard direct file download."""
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+)
+
+
+def parse_netscape_cookies(cookie_file: str) -> dict[str, str]:
+    """Parse Netscape-format cookie file into a dict for requests."""
+    cookies: dict[str, str] = {}
+    if not cookie_file or not os.path.isfile(cookie_file):
+        return cookies
+    try:
+        with open(cookie_file, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                parts = line.split("\t")
+                if len(parts) >= 7:
+                    cookies[parts[5]] = parts[6]
+    except Exception:
+        pass
+    return cookies
+
+
+def is_direct_file_url(url: str, filename: str = "") -> bool:
+    """Check if URL or provided filename points to a direct downloadable media file."""
     try:
         if "googlevideo.com" in url or "/videoplayback" in url:
             return True
+
+        if filename:
+            fn_lower = filename.lower()
+            if any(fn_lower.endswith(ext) for ext in DIRECT_EXTENSIONS):
+                return True
+
         parsed = urllib.parse.urlparse(url)
         path = parsed.path.lower()
         ext = os.path.splitext(path)[1]
         if ext in DIRECT_EXTENSIONS:
             return True
-        # Check query string for filename
+
         query = parsed.query.lower()
         for ext_target in DIRECT_EXTENSIONS:
             if ext_target in query:
+                return True
+
+        # Non-social media direct server link
+        hostname = (parsed.hostname or "").lower()
+        if not any(portal in hostname for portal in KNOWN_VIDEO_PLATFORMS):
+            if any(term in path for term in ("/download", "/file", "/stream", "/video", "/media", "/get/")):
                 return True
     except Exception:
         pass
     return False
 
 
-def probe_url(url: str, timeout: int = 15) -> dict:
+def build_request_headers(task: DownloadTask) -> dict[str, str]:
+    """Build full browser headers for the download request."""
+    headers: dict[str, str] = {
+        "User-Agent": DEFAULT_USER_AGENT,
+        "Accept": "*/*",
+        "Accept-Encoding": "identity",
+    }
+    # Forward headers captured by browser extension
+    custom = getattr(task, "http_headers", None) or {}
+    if isinstance(custom, dict):
+        for k, v in custom.items():
+            k_lower = k.lower()
+            if k_lower in ("user-agent", "referer", "origin", "authorization", "accept"):
+                if isinstance(v, str) and v and not re.search(r"[\r\n]", v):
+                    headers[k] = v
+
+    # Forward referer
+    referer = getattr(task, "referer", "")
+    if referer and "referer" not in [k.lower() for k in headers]:
+        headers["Referer"] = referer
+
+    return headers
+
+
+def probe_url(
+    url: str,
+    headers: dict[str, str] | None = None,
+    cookies: dict[str, str] | None = None,
+    timeout: int = 15,
+) -> dict:
     """
-    Probes URL using HEAD or fallback GET Range: bytes=0-0.
+    Probes URL using HEAD or fallback GET Range: bytes=0-0 with requests.
     Returns: {
         'total_size': int | None,
         'accept_ranges': bool,
         'filename': str,
         'etag': str,
-        'status_code': int
+        'status_code': int,
+        'final_url': str,
+        'headers': dict
     }
     """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "Accept": "*/*",
-        "Accept-Encoding": "identity",
-    }
+    req_headers = dict(headers or {})
+    if "User-Agent" not in req_headers:
+        req_headers["User-Agent"] = DEFAULT_USER_AGENT
+    if "Accept" not in req_headers:
+        req_headers["Accept"] = "*/*"
+    req_headers["Accept-Encoding"] = "identity"
 
-    # 1. Try HEAD request
-    req = urllib.request.Request(url, headers=headers, method="HEAD")
+    session = requests.Session()
+    if cookies:
+        session.cookies.update(cookies)
+
     res_headers = None
     status_code = 200
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            res_headers = response.headers
-            status_code = response.status
-    except Exception:
-        # Fallback to Range: bytes=0-0 GET probe
-        headers["Range"] = "bytes=0-0"
-        req = urllib.request.Request(url, headers=headers, method="GET")
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as response:
-                res_headers = response.headers
-                status_code = response.status
-        except Exception as e:
-            raise RuntimeError(f"Could not connect to URL: {e}")
-
-    # Extract metadata
+    final_url = url
     total_size = None
     accept_ranges = False
 
-    cr = res_headers.get("Content-Range", "")
-    if cr:
-        match = re.search(r"bytes\s+\d+-\d+/(\d+)", cr)
-        if match:
-            total_size = int(match.group(1))
+    # 1. Try HEAD request
+    try:
+        resp = session.head(url, headers=req_headers, allow_redirects=True, timeout=timeout, verify=False)
+        status_code = resp.status_code
+        res_headers = resp.headers
+        final_url = resp.url
+        cl = res_headers.get("Content-Length")
+        if cl and cl.isdigit():
+            total_size = int(cl)
+        ar = res_headers.get("Accept-Ranges", "").lower()
+        if ar == "bytes" or status_code == 206:
             accept_ranges = True
+    except Exception:
+        pass
 
-    cl = res_headers.get("Content-Length")
-    if total_size is None and cl and cl.isdigit():
-        total_size = int(cl)
+    # 2. If HEAD didn't yield total_size or status >= 400, try Range: bytes=0-0 GET probe
+    if total_size is None or status_code >= 400 or status_code == 405:
+        range_headers = dict(req_headers)
+        range_headers["Range"] = "bytes=0-0"
+        try:
+            resp = session.get(url, headers=range_headers, allow_redirects=True, stream=True, timeout=timeout, verify=False)
+            status_code = resp.status_code
+            res_headers = resp.headers
+            final_url = resp.url
+            cr = res_headers.get("Content-Range", "")
+            if cr:
+                match = re.search(r"bytes\s+\d+-\d+/(\d+)", cr)
+                if match:
+                    total_size = int(match.group(1))
+                    accept_ranges = True
+            if total_size is None:
+                cl = res_headers.get("Content-Length")
+                if cl and cl.isdigit() and int(cl) > 1:
+                    total_size = int(cl)
+            if res_headers.get("Accept-Ranges", "").lower() == "bytes" or status_code == 206:
+                accept_ranges = True
+            resp.close()
+        except Exception as e:
+            # If even Range GET fails, fall back to plain stream GET
+            try:
+                resp = session.get(url, headers=req_headers, allow_redirects=True, stream=True, timeout=timeout, verify=False)
+                status_code = resp.status_code
+                res_headers = resp.headers
+                final_url = resp.url
+                cl = res_headers.get("Content-Length")
+                if cl and cl.isdigit():
+                    total_size = int(cl)
+                resp.close()
+            except Exception as exc:
+                raise RuntimeError(f"Could not connect to URL ({exc})")
 
-    if res_headers.get("Accept-Ranges", "").lower() == "bytes" or status_code == 206:
-        accept_ranges = True
+    if res_headers is None:
+        raise RuntimeError(f"Server returned status {status_code} with no response headers.")
 
     # Filename extraction from Content-Disposition
     filename = ""
@@ -126,13 +232,13 @@ def probe_url(url: str, timeout: int = 15) -> dict:
                 filename = plain_match.group(1).strip('"\' ')
 
     if not filename:
-        parsed_path = urllib.parse.urlparse(url).path
+        parsed_path = urllib.parse.urlparse(final_url or url).path
         base = os.path.basename(parsed_path)
         if base:
             filename = urllib.parse.unquote(base)
 
     if not filename or len(filename) > 180:
-        filename = "download_file.bin"
+        filename = "download_video.mp4"
 
     etag = res_headers.get("ETag", "").strip()
 
@@ -142,6 +248,8 @@ def probe_url(url: str, timeout: int = 15) -> dict:
         "filename": sanitize_filename(filename),
         "etag": etag,
         "status_code": status_code,
+        "final_url": final_url,
+        "headers": dict(res_headers),
     }
 
 
@@ -151,8 +259,10 @@ def _download_chunk_range(
     end_byte: int,
     part_path: Path,
     task: DownloadTask,
+    headers: dict[str, str],
+    cookies: dict[str, str],
     progress_callback: Callable[[int], None],
-    chunk_buffer_size: int = 65536
+    chunk_buffer_size: int = 65536,
 ) -> None:
     """Downloads a specific byte range and writes to part_path."""
     downloaded_in_part = 0
@@ -163,29 +273,31 @@ def _download_chunk_range(
     if curr_start > end_byte:
         return  # Chunk already completed
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "Range": f"bytes={curr_start}-{end_byte}",
-        "Accept-Encoding": "identity",
-    }
-    req = urllib.request.Request(url, headers=headers)
+    req_headers = dict(headers)
+    req_headers["Range"] = f"bytes={curr_start}-{end_byte}"
+    req_headers["Accept-Encoding"] = "identity"
 
     mode = "ab" if downloaded_in_part > 0 else "wb"
-    with urllib.request.urlopen(req, timeout=30) as response, open(part_path, mode) as f:
-        while True:
+    with requests.get(
+        url,
+        headers=req_headers,
+        cookies=cookies,
+        stream=True,
+        timeout=30,
+        verify=False,
+    ) as response, open(part_path, mode) as f:
+        for chunk in response.iter_content(chunk_size=chunk_buffer_size):
             if task.cancel_event.is_set() or task.pause_event.is_set():
                 break
-            chunk = response.read(chunk_buffer_size)
-            if not chunk:
-                break
-            f.write(chunk)
-            progress_callback(len(chunk))
+            if chunk:
+                f.write(chunk)
+                progress_callback(len(chunk))
 
 
 def download_segmented_http_task(
     task: DownloadTask,
     notify_callback: Callable[[DownloadTask], None],
-    num_connections: int = 8
+    num_connections: int = 10,
 ) -> bool:
     """
     Downloads direct HTTP/HTTPS files using IDM-Style dynamic segmentation.
@@ -193,15 +305,34 @@ def download_segmented_http_task(
     """
     try:
         with task.lock:
-            task.status = DownloadStatus.FETCHING_INFO
+            task.status = DownloadStatus.DOWNLOADING
+            task.conversion_stage = "Connecting to server…"
             task.error = ""
         notify_callback(task)
 
-        # 1. Probe target URL
-        probe = probe_url(task.url)
+        # 1. Build headers and cookies
+        headers = build_request_headers(task)
+        cookies = {}
+        if task.cookies_source and Path(task.cookies_source).is_file():
+            cookies = parse_netscape_cookies(task.cookies_source)
+
+        # 2. Probe target URL
+        probe = probe_url(task.url, headers=headers, cookies=cookies)
         total_size = probe["total_size"]
         accept_ranges = probe["accept_ranges"]
-        final_filename = probe["filename"] or task.filename or "download"
+
+        # Filename precedence: user/extension provided title -> probed Content-Disposition -> URL path
+        final_filename = ""
+        if task.filename and not task.filename.startswith("Analyzing") and not task.filename.startswith("Preparing"):
+            final_filename = task.filename
+        if not final_filename:
+            final_filename = probe["filename"] or "download_video.mp4"
+
+        # Ensure valid extension
+        if not os.path.splitext(final_filename)[1]:
+            final_filename += ".mp4"
+
+        final_filename = sanitize_filename(final_filename)
 
         dest_dir = Path(task.destination)
         dest_dir.mkdir(parents=True, exist_ok=True)
@@ -212,13 +343,16 @@ def download_segmented_http_task(
             task.output_path = str(final_output)
             task.total = total_size
             task.status = DownloadStatus.DOWNLOADING
+            task.conversion_stage = "Downloading (Turbo 10x)…"
         notify_callback(task)
+
+        target_url = probe["final_url"] or task.url
 
         # If server does not support ranges or file is tiny (< 1MB), do single stream
         if not accept_ranges or not total_size or total_size < 1048576:
-            return _download_single_stream(task, final_output, notify_callback)
+            return _download_single_stream(task, final_output, target_url, headers, cookies, notify_callback)
 
-        # 2. Divide into segments (8 to 16 chunks)
+        # 3. Divide into segments (8 to 16 chunks)
         connections = min(num_connections, max(2, total_size // (512 * 1024)))
         chunk_size = total_size // connections
         parts_dir = dest_dir / f".deepx_parts_{abs(hash(task.url)) % 1000000}"
@@ -231,7 +365,7 @@ def download_segmented_http_task(
             p_file = parts_dir / f"{i}.part"
             segment_ranges.append((i, s_byte, e_byte, p_file))
 
-        # Check existing partial downloaded bytes
+        # Check existing partial downloaded bytes for resume
         initial_downloaded = sum(p.stat().st_size for _, _, _, p in segment_ranges if p.is_file())
         with task.lock:
             task.downloaded = initial_downloaded
@@ -248,7 +382,7 @@ def download_segmented_http_task(
                 total_downloaded_bytes += bytes_count
                 now = time.time()
                 dt = now - last_time
-                if dt >= 0.5:
+                if dt >= 0.4:
                     speed = (total_downloaded_bytes - last_bytes) / dt
                     last_bytes = total_downloaded_bytes
                     last_time = now
@@ -257,17 +391,19 @@ def download_segmented_http_task(
                         task.speed_bps = speed
                     notify_callback(task)
 
-        # 3. Parallel chunk downloading via ThreadPoolExecutor
+        # 4. Parallel chunk downloading via ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=connections) as executor:
             futures = [
                 executor.submit(
                     _download_chunk_range,
-                    task.url,
+                    target_url,
                     s,
                     e,
                     p,
                     task,
-                    on_chunk_bytes
+                    headers,
+                    cookies,
+                    on_chunk_bytes,
                 )
                 for _, s, e, p in segment_ranges
             ]
@@ -281,10 +417,10 @@ def download_segmented_http_task(
             notify_callback(task)
             return True
 
-        # 4. Zero-RAM Sequential Reassembly
+        # 5. Zero-RAM Sequential Reassembly
         with task.lock:
             task.status = DownloadStatus.CONVERTING
-            task.conversion_stage = "Assembling IDM segments…"
+            task.conversion_stage = "Assembling download segments…"
             task.conversion_progress = 0.5
             task.speed_bps = 0
         notify_callback(task)
@@ -314,7 +450,7 @@ def download_segmented_http_task(
             task.downloaded = total_size
             task.speed_bps = 0
             task.conversion_progress = 1.0
-            task.conversion_stage = "Assembly complete"
+            task.conversion_stage = "Download complete"
         notify_callback(task)
 
         # History Record
@@ -339,9 +475,17 @@ def download_segmented_http_task(
                 task.speed_bps = 0
             notify_callback(task)
             return True
+
+        # Try curl_cffi Chrome impersonation fallback if 403 or Cloudflare detected
+        try:
+            if _download_curl_cffi_fallback(task, final_output if 'final_output' in locals() else None, headers if 'headers' in locals() else {}, notify_callback):
+                return True
+        except Exception:
+            pass
+
         with task.lock:
             task.status = DownloadStatus.FAILED
-            task.error = str(exc)
+            task.error = f"HTTP Error: {exc}"
             task.speed_bps = 0
         notify_callback(task)
         return False
@@ -350,43 +494,46 @@ def download_segmented_http_task(
 def _download_single_stream(
     task: DownloadTask,
     final_output: Path,
-    notify_callback: Callable[[DownloadTask], None]
+    target_url: str,
+    headers: dict[str, str],
+    cookies: dict[str, str],
+    notify_callback: Callable[[DownloadTask], None],
 ) -> bool:
     """Fallback single-stream downloader for non-ranged URLs."""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-        "Accept": "*/*",
-    }
-    req = urllib.request.Request(task.url, headers=headers)
     downloaded = 0
     last_time = time.time()
     last_bytes = 0
 
-    with urllib.request.urlopen(req, timeout=30) as response, open(final_output, "wb") as f:
+    with requests.get(
+        target_url,
+        headers=headers,
+        cookies=cookies,
+        stream=True,
+        timeout=30,
+        verify=False,
+    ) as response, open(final_output, "wb") as f:
         total = response.headers.get("Content-Length")
         if total and total.isdigit():
             with task.lock:
                 task.total = int(total)
 
-        while True:
+        for chunk in response.iter_content(chunk_size=65536):
             if task.cancel_event.is_set() or task.pause_event.is_set():
                 break
-            chunk = response.read(65536)
-            if not chunk:
-                break
-            f.write(chunk)
-            downloaded += len(chunk)
+            if chunk:
+                f.write(chunk)
+                downloaded += len(chunk)
 
-            now = time.time()
-            dt = now - last_time
-            if dt >= 0.5:
-                speed = (downloaded - last_bytes) / dt
-                last_bytes = downloaded
-                last_time = now
-                with task.lock:
-                    task.downloaded = downloaded
-                    task.speed_bps = speed
-                notify_callback(task)
+                now = time.time()
+                dt = now - last_time
+                if dt >= 0.4:
+                    speed = (downloaded - last_bytes) / dt
+                    last_bytes = downloaded
+                    last_time = now
+                    with task.lock:
+                        task.downloaded = downloaded
+                        task.speed_bps = speed
+                    notify_callback(task)
 
     if task.cancel_event.is_set() or task.pause_event.is_set():
         with task.lock:
@@ -399,5 +546,94 @@ def _download_single_stream(
         task.status = DownloadStatus.COMPLETED
         task.downloaded = task.total or downloaded
         task.speed_bps = 0
+        task.conversion_progress = 1.0
+        task.conversion_stage = "Download complete"
+    notify_callback(task)
+
+    history_store.record_completed(
+        DownloadRecord(
+            platform=task.platform or "direct",
+            media_id=task.media_id or "direct_file",
+            canonical_url=task.url,
+            creator=task.creator or "Direct Download",
+            title=final_output.name,
+            saved_filename=final_output.name,
+            saved_filepath=str(final_output),
+            file_extension=final_output.suffix,
+        )
+    )
+    return True
+
+
+def _download_curl_cffi_fallback(
+    task: DownloadTask,
+    final_output: Optional[Path],
+    headers: dict[str, str],
+    notify_callback: Callable[[DownloadTask], None],
+) -> bool:
+    """Anti-bot fallback using curl_cffi with Chrome 120 browser TLS fingerprint."""
+    try:
+        from curl_cffi import requests as c_requests
+    except ImportError:
+        return False
+
+    if not final_output:
+        dest_dir = Path(task.destination)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        final_filename = sanitize_filename(task.filename or "download_video.mp4")
+        if not os.path.splitext(final_filename)[1]:
+            final_filename += ".mp4"
+        final_output = dest_dir / final_filename
+
+    with task.lock:
+        task.conversion_stage = "Connecting via Chrome TLS engine…"
+    notify_callback(task)
+
+    session = c_requests.Session(impersonate="chrome120")
+    req_headers = dict(headers)
+    resp = session.get(task.url, headers=req_headers, stream=True, timeout=30)
+    if resp.status_code >= 400:
+        return False
+
+    downloaded = 0
+    total = resp.headers.get("Content-Length")
+    if total and total.isdigit():
+        with task.lock:
+            task.total = int(total)
+
+    last_time = time.time()
+    last_bytes = 0
+
+    with open(final_output, "wb") as f:
+        for chunk in resp.iter_content(chunk_size=65536):
+            if task.cancel_event.is_set() or task.pause_event.is_set():
+                break
+            if chunk:
+                f.write(chunk)
+                downloaded += len(chunk)
+                now = time.time()
+                dt = now - last_time
+                if dt >= 0.4:
+                    speed = (downloaded - last_bytes) / dt
+                    last_bytes = downloaded
+                    last_time = now
+                    with task.lock:
+                        task.downloaded = downloaded
+                        task.speed_bps = speed
+                    notify_callback(task)
+
+    if task.cancel_event.is_set() or task.pause_event.is_set():
+        with task.lock:
+            task.status = DownloadStatus.PAUSED if task.pause_event.is_set() else DownloadStatus.CANCELLED
+            task.speed_bps = 0
+        notify_callback(task)
+        return True
+
+    with task.lock:
+        task.status = DownloadStatus.COMPLETED
+        task.downloaded = task.total or downloaded
+        task.speed_bps = 0
+        task.conversion_progress = 1.0
+        task.conversion_stage = "Download complete"
     notify_callback(task)
     return True

@@ -252,7 +252,7 @@ class SettingsDialog(ctk.CTkToplevel):
             header_row,
             text="🌐 In-App Browser Engine & Extension",
             text_color=SET_INK,
-            font=ctk.CTkFont(family="Times New Roman", size=13, weight="bold"),
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
         ).pack(side="left")
 
         # Detect installed browsers
@@ -275,7 +275,7 @@ class SettingsDialog(ctk.CTkToplevel):
             sel_row,
             text="Select Browser:",
             text_color="#94A3B8",
-            font=ctk.CTkFont(family="Times New Roman", size=12),
+            font=ctk.CTkFont(family="Segoe UI", size=12),
         ).pack(side="left")
 
         browser_menu = ctk.CTkOptionMenu(
@@ -285,7 +285,7 @@ class SettingsDialog(ctk.CTkToplevel):
             width=180,
             fg_color="#2D3A4F",
             button_color="#3B82F6",
-            font=ctk.CTkFont(family="Times New Roman", size=12, weight="bold"),
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             command=self._on_browser_changed,
         )
         browser_menu.pack(side="right")
@@ -309,7 +309,7 @@ class SettingsDialog(ctk.CTkToplevel):
             ctk.CTkLabel(
                 info_win,
                 text="🧩 Add HQ Downloader Extension to Browser",
-                font=ctk.CTkFont(family="Times New Roman", size=16, weight="bold"),
+                font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
                 text_color="#38BDF8",
             ).pack(anchor="w", padx=20, pady=(20, 10))
 
@@ -324,7 +324,7 @@ class SettingsDialog(ctk.CTkToplevel):
             ctk.CTkLabel(
                 info_win,
                 text=steps_text,
-                font=ctk.CTkFont(family="Times New Roman", size=13),
+                font=ctk.CTkFont(family="Segoe UI", size=13),
                 text_color="#E2E8F0",
                 justify="left",
                 wraplength=470,
@@ -333,7 +333,7 @@ class SettingsDialog(ctk.CTkToplevel):
             ctk.CTkButton(
                 info_win,
                 text="Theek hay / Done",
-                font=ctk.CTkFont(family="Times New Roman", size=13, weight="bold"),
+                font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
                 fg_color="#2563EB",
                 hover_color="#1D4ED8",
                 width=130,
@@ -347,7 +347,7 @@ class SettingsDialog(ctk.CTkToplevel):
             test_row,
             text="🔒 Dedicated Isolated Profile & Custom MV3 Browser Extension.",
             text_color="#64748B",
-            font=ctk.CTkFont(family="Times New Roman", size=11, slant="italic"),
+            font=ctk.CTkFont(family="Segoe UI", size=11, slant="italic"),
             wraplength=270,
             justify="left",
         ).pack(side="left")
@@ -359,7 +359,7 @@ class SettingsDialog(ctk.CTkToplevel):
             height=28,
             fg_color="#2563EB",
             hover_color="#1D4ED8",
-            font=ctk.CTkFont(family="Times New Roman", size=11, weight="bold"),
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
             command=_manage_extension,
         ).pack(side="right", padx=(6, 0))
 
@@ -370,7 +370,7 @@ class SettingsDialog(ctk.CTkToplevel):
             height=28,
             fg_color="#334155",
             hover_color="#475569",
-            font=ctk.CTkFont(family="Times New Roman", size=11),
+            font=ctk.CTkFont(family="Segoe UI", size=11),
             command=_test_launch,
         ).pack(side="right")
 

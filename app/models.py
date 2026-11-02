@@ -26,6 +26,8 @@ class DownloadTask:
     speed_limit_bps: int | None = None
     numbering: int | None = None
     cookies_source: str | None = None
+    http_headers: dict = field(default_factory=dict)
+    referer: str = ""
     id: str = field(default_factory=lambda: uuid4().hex)
     filename: str = "Preparing download…"
     thumbnail_url: str = ""

@@ -11,20 +11,20 @@ from urllib.parse import urlparse
 import customtkinter as ctk
 from PIL import Image
 
-# Globally enforce "Times New Roman" font family across all CustomTkinter components
-if not getattr(ctk.CTkFont, "_is_times_new_roman_patched", False):
+# Globally enforce "Segoe UI" font family across all CustomTkinter components
+if not getattr(ctk.CTkFont, "_is_segoe_ui_patched", False):
     _orig_ctkfont_init = ctk.CTkFont.__init__
 
-    def _times_new_roman_font_init(self, *args, **kwargs):
-        kwargs["family"] = "Times New Roman"
+    def _segoe_ui_font_init(self, *args, **kwargs):
+        kwargs["family"] = "Segoe UI"
         return _orig_ctkfont_init(self, *args, **kwargs)
 
-    ctk.CTkFont.__init__ = _times_new_roman_font_init
-    ctk.CTkFont._is_times_new_roman_patched = True
+    ctk.CTkFont.__init__ = _segoe_ui_font_init
+    ctk.CTkFont._is_segoe_ui_patched = True
 
 try:
     from customtkinter import ThemeManager
-    ThemeManager.theme["CTkFont"]["family"] = "Times New Roman"
+    ThemeManager.theme["CTkFont"]["family"] = "Segoe UI"
 except Exception:
     pass
 
@@ -111,7 +111,7 @@ class HQVideoDownloaderApp(ctk.CTk):
         ctk.set_default_color_theme("blue")
         try:
             from customtkinter import ThemeManager
-            ThemeManager.theme["CTkFont"]["family"] = "Times New Roman"
+            ThemeManager.theme["CTkFont"]["family"] = "Segoe UI"
         except Exception:
             pass
 
@@ -128,12 +128,12 @@ class HQVideoDownloaderApp(ctk.CTk):
             "TkTooltipFont",
         ):
             try:
-                tkfont.nametofont(font_name).configure(family="Times New Roman")
+                tkfont.nametofont(font_name).configure(family="Segoe UI")
             except Exception:
                 pass
 
         try:
-            self.option_add("*Font", "{Times New Roman} 11")
+            self.option_add("*Font", "{Segoe UI} 11")
         except Exception:
             pass
 
@@ -4358,7 +4358,14 @@ class HQVideoDownloaderApp(ctk.CTk):
         self.after(0, _focus)
 
     def _on_browser_download_received(
-        self, url: str, cookies_path: str = "", title: str = "", media_type: str = "video", quality: str = "Best Available"
+        self,
+        url: str,
+        cookies_path: str = "",
+        title: str = "",
+        media_type: str = "video",
+        quality: str = "Best Available",
+        request_headers: dict | None = None,
+        referer: str = "",
     ) -> None:
         def _do_enqueue():
             if quality and quality != "Best Available":
@@ -4385,7 +4392,7 @@ class HQVideoDownloaderApp(ctk.CTk):
                 except Exception:
                     pass
 
-            self._queue_urls([url], cookies_source=cookies_path, custom_title=title, quality_override=quality)
+            self._queue_urls([url], cookies_source=cookies_path, custom_title=title, quality_override=quality, http_headers=request_headers or {}, referer=referer)
             self.show_page("downloads")
             try:
                 self.deiconify()
@@ -5657,7 +5664,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             done_event.wait()
             return result_holder[0]
 
-    def _queue_urls(self, urls: list[str], cookies_source: str = "", custom_title: str = "", quality_override: str = "") -> bool:
+    def _queue_urls(self, urls: list[str], cookies_source: str = "", custom_title: str = "", quality_override: str = "", http_headers: dict | None = None, referer: str = "") -> bool:
         if not self._check_device_not_banned():
             return False
 
@@ -5765,6 +5772,8 @@ class HQVideoDownloaderApp(ctk.CTk):
                 creator=creator,
                 media_id=mid,
                 platform=p,
+                http_headers=http_headers or {},
+                referer=referer or "",
                 is_duplicate_copy=is_dup,
                 on_duplicate_prompt=self.prompt_duplicate_confirmation_sync,
             )

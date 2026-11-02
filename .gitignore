@@ -38,3 +38,7 @@ dist_owner/
 *activator*
 *keygen*
 *owner_manager*
+
+*.bak
+*.pre_ext.bak
+*.pre_extension.bak

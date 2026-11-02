@@ -1,8 +1,13 @@
 {
-  "version": "2.5.5",
+  "version": "2.5.6",
   "release_date": "2026-11-02",
   "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.5.4/DeepX_Vision_Downloader_Pro_Setup_v2.5.4.exe",
   "changelog": [
+    "2.5.6: Fixed direct video / movie downloads from browser extension (netnaija, file servers, CDNs)",
+    "Engineered IDM-Style parallel multi-segment HTTP engine with full browser header, cookie, and referer forwarding",
+    "Modernized application typography from Times New Roman to crisp Segoe UI across all windows and dialogs",
+    "Redesigned download cards with high-contrast status badges and real-time telemetry",
+    "Added anti-bot fallback with curl_cffi Chrome TLS impersonation",
     "2.5.5: Added Extension tab in sidebar with install guide and status check",
     "Updated extension files from latest Awesome Downloader v44.9.1",
     "Extension rebranded to DeepX Vision Downloader",

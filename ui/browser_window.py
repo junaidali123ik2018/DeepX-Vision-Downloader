@@ -340,7 +340,7 @@ def _build_injection_script() -> str:
                         z-index: 2147483645 !important;
                         background: #2563EB !important;
                         color: #FFFFFF !important;
-                        font-family: "Times New Roman", serif !important;
+                        font-family: "Segoe UI", serif !important;
                         font-size: 11px !important;
                         font-weight: 700 !important;
                         padding: 5px 10px !important;
@@ -381,7 +381,7 @@ def _build_injection_script() -> str:
             bar.style.alignItems = 'center';
             bar.style.padding = '0 12px';
             bar.style.gap = '8px';
-            bar.style.fontFamily = "'Times New Roman', serif";
+            bar.style.fontFamily = "'Segoe UI', serif";
             bar.style.boxSizing = 'border-box';
 
             function makeBtn(text, title, onClick, isPrimary) {
@@ -526,7 +526,7 @@ def _build_injection_script() -> str:
             floatBtn.style.borderRadius = '24px';
             floatBtn.style.fontSize = '14px';
             floatBtn.style.fontWeight = 'bold';
-            floatBtn.style.fontFamily = "'Times New Roman', serif";
+            floatBtn.style.fontFamily = "'Segoe UI', serif";
             floatBtn.style.boxShadow = '0 8px 24px rgba(37, 99, 235, 0.45)';
             floatBtn.style.cursor = 'pointer';
             floatBtn.style.userSelect = 'none';
@@ -925,12 +925,15 @@ class BrowserIPCServer:
                                 pass
                         if canonical_url and outer.on_download:
                             try:
-                                outer.on_download(canonical_url, cookies_path, title, media_type, quality)
+                                outer.on_download(canonical_url, cookies_path, title, media_type, quality, request_headers, referer)
                             except TypeError:
                                 try:
-                                    outer.on_download(canonical_url, cookies_path, title, media_type)
+                                    outer.on_download(canonical_url, cookies_path, title, media_type, quality)
                                 except TypeError:
-                                    outer.on_download(canonical_url, cookies_path, title)
+                                    try:
+                                        outer.on_download(canonical_url, cookies_path, title, media_type)
+                                    except TypeError:
+                                        outer.on_download(canonical_url, cookies_path, title)
                         self._send_cors_headers(200)
                         self.wfile.write(b'{"ok":true,"status":"ok","id":"deepx_dl"}')
                         return
@@ -1237,7 +1240,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       width: 320px;
       margin: 0;
       padding: 16px;
-      font-family: 'Times New Roman', serif;
+      font-family: 'Segoe UI', serif;
       background: #0F172A;
       color: #F8FAFC;
       box-sizing: border-box;
@@ -1284,7 +1287,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       margin-bottom: 10px;
       border: none;
       border-radius: 8px;
-      font-family: 'Times New Roman', serif;
+      font-family: 'Segoe UI', serif;
       font-size: 13px;
       font-weight: bold;
       cursor: pointer;
@@ -1546,7 +1549,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             toast.style.borderRadius = '24px';
             toast.style.fontSize = '14px';
             toast.style.fontWeight = 'bold';
-            toast.style.fontFamily = "'Times New Roman', serif";
+            toast.style.fontFamily = "'Segoe UI', serif";
             toast.style.boxShadow = '0 6px 20px rgba(16, 185, 129, 0.45)';
             toast.style.zIndex = '2147483647';
             toast.style.transition = 'all 0.3s ease';
@@ -1576,7 +1579,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 z-index: 2147483645 !important;
                 background: #2563EB !important;
                 color: #FFFFFF !important;
-                font-family: "Times New Roman", serif !important;
+                font-family: "Segoe UI", serif !important;
                 font-size: 11px !important;
                 font-weight: 700 !important;
                 padding: 5px 10px !important;
@@ -1609,7 +1612,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 z-index: 2147483647 !important;
                 display: inline-flex !important;
                 align-items: center !important;
-                font-family: "Times New Roman", serif !important;
+                font-family: "Segoe UI", serif !important;
                 user-select: none !important;
                 opacity: 0.92 !important;
                 transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease !important;
@@ -1714,7 +1717,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         bar.style.padding = '0 12px';
         bar.style.gap = '8px';
         bar.style.boxShadow = '0 4px 15px rgba(0,0,0,0.5)';
-        bar.style.fontFamily = "'Times New Roman', serif";
+        bar.style.fontFamily = "'Segoe UI', serif";
         bar.style.boxSizing = 'border-box';
         bar.style.transition = 'transform 0.25s ease';
 
@@ -1725,7 +1728,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             b.style.height = '30px';
             b.style.borderRadius = '6px';
             b.style.fontSize = '12px';
-            b.style.fontFamily = "'Times New Roman', serif";
+            b.style.fontFamily = "'Segoe UI', serif";
             b.style.cursor = 'pointer';
             b.style.display = 'inline-flex';
             b.style.alignItems = 'center';
@@ -1781,7 +1784,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         urlInput.style.borderRadius = '6px';
         urlInput.style.padding = '0 10px';
         urlInput.style.fontSize = '12px';
-        urlInput.style.fontFamily = "'Times New Roman', serif";
+        urlInput.style.fontFamily = "'Segoe UI', serif";
         urlInput.style.outline = 'none';
         urlInput.style.boxSizing = 'border-box';
         urlInput.style.minWidth = '140px';
@@ -1902,7 +1905,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         container.style.padding = '6px';
         container.style.borderRadius = '32px';
         container.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.6)';
-        container.style.fontFamily = "'Times New Roman', serif";
+        container.style.fontFamily = "'Segoe UI', serif";
         container.style.userSelect = 'none';
 
         // Video Button
