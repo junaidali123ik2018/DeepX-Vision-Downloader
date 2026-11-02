@@ -73,38 +73,31 @@ async function discoverHls(tabId,url) {
     if(hlsSeen.get(tabId)===seen)await remember(tabId,variants.map(item=>({...item,title})));
   } catch {} finally {clearTimeout(timer);hlsActive--;}
 }
+
+// ── DeepX Vision Downloader Bridge ──────────────────────────────────────────
+// Try DeepX HTTP IPC first (ports 18932-18935), fallback to native messaging.
+const DEEPX_PORTS = [18932, 18933, 18934, 18935];
 async function sendToDeepX(payload) {
-  const candidatePorts = [18932, 18933, 18934, 18935];
-  for (const port of candidatePorts) {
+  for (const port of DEEPX_PORTS) {
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 2500);
-      const res = await fetch(`http://127.0.0.1:${port}/downloads`, {
+      const resp = await fetch(`http://127.0.0.1:${port}/downloads`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        signal: controller.signal
+        signal: AbortSignal.timeout(2000),
       });
-      clearTimeout(timer);
-      if (res.ok) {
-        const data = await res.json();
-        return { ok: true, id: data.id || 'deepx_dl' };
-      }
-    } catch(e) {}
+      if (resp.ok) return await resp.json();
+    } catch {}
   }
-  return null;
+  throw new Error('DeepX IPC not reachable on ports 18932-18935');
 }
 
-async function nativeSend(payload) {
-  // 1. Try DeepX Vision HTTP Bridge first
-  try {
-    const deepxRes = await sendToDeepX(payload);
-    if (deepxRes && deepxRes.ok) return deepxRes;
-  } catch(e) {}
-
-  // 2. Fallback to Native Messaging Host
-  return new Promise((resolve, reject) => {
-    if (!globalThis.browser) chrome.runtime.sendNativeMessage(HOST, payload, result => {
+function nativeSend(payload) {
+  // Try DeepX Vision Downloader HTTP IPC first, then fall back to native messaging
+  return sendToDeepX(payload).catch(() => {
+    return new Promise((resolve, reject) => {
+      // Chrome callbacks retain useful runtime.lastError diagnostics.
+      if (!globalThis.browser) chrome.runtime.sendNativeMessage(HOST, payload, result => {
       if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
       else if (!result?.ok) reject(new Error(result?.error || 'The desktop app did not accept this download.'));
       else resolve(result);
@@ -131,15 +124,7 @@ async function enqueue(item, tabId) {
   const url = httpUrl(sabr?.serverAbrStreamingUrl||item.url);
   if (!url) throw new Error('Only direct HTTP and HTTPS links are supported.');
   if (unsupported(url, item.mime) || item.unsupported) throw new Error(item.reason || 'DASH streams are unsupported.');
-  let requestHeaders = requestContext.get(tabId)?.get(url) || {};
-  if (!requestHeaders.cookie) {
-    const tabMap = requestContext.get(tabId);
-    if (tabMap) {
-      for (const [u, h] of tabMap.entries()) {
-        if (h && h.cookie) { requestHeaders = { ...h, ...requestHeaders }; break; }
-      }
-    }
-  }
+  const requestHeaders=requestContext.get(tabId)?.get(url);
   return nativeSend({action: 'download', url, youtubeFormat:item.youtubeFormat, sabr, startNow:item.startNow===true, audioUrl:httpUrl(item.audioUrl)||undefined, outputFormat:item.outputFormat, filename: item.filename, referer: httpUrl(requestHeaders?.referer || item.referer) || undefined,requestHeaders});
 }
 function updateSession(key,change) {

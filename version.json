@@ -1,8 +1,12 @@
 {
-  "version": "2.5.4",
+  "version": "2.5.5",
   "release_date": "2026-11-02",
   "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.5.4/DeepX_Vision_Downloader_Pro_Setup_v2.5.4.exe",
   "changelog": [
+    "2.5.5: Added Extension tab in sidebar with install guide and status check",
+    "Updated extension files from latest Awesome Downloader v44.9.1",
+    "Extension rebranded to DeepX Vision Downloader",
+    "DeepX HTTP bridge priority in extension background.js",
     "High-Performance IDM Multi-Segment HTTP Range Engine: 10x parallel chunk downloading for direct files (.zip, .exe, .iso, .mp4)",
     "YouTube Player Metadata Sniffer: Automatically extracts available resolutions (1080p, 720p, 480p, MP3) with exact file sizes",
     "Shadow DOM Protected Floating Video Bar: Website CSS can never distort or override the download bar",

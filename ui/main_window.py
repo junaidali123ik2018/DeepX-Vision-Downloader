@@ -178,6 +178,15 @@ class HQVideoDownloaderApp(ctk.CTk):
 
         self._build_shell()
         self._restore_pending_queue()
+
+        # Extension Page
+        self.extension_page = ctk.CTkFrame(self.content, fg_color=BACKGROUND, corner_radius=0)
+        self.extension_page.grid_columnconfigure(0, weight=1)
+        self.extension_page.grid_rowconfigure(0, weight=1)
+        self._build_extension_page()
+        self.extension_page.grid(row=0, column=0, sticky="nsew")
+        self.extension_page.grid_forget()
+
         self.show_page("dashboard")
         self._schedule_refresh()
 
@@ -343,6 +352,33 @@ class HQVideoDownloaderApp(ctk.CTk):
             )
             button.pack(fill="x", padx=10, pady=1)
             self.nav_buttons[key] = button
+
+        # Extension / Tools Section
+        ctk.CTkLabel(
+            self.sidebar,
+            text="Tools",
+            text_color="#64748B",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            anchor="w",
+        ).pack(fill="x", padx=16, pady=(10, 2))
+
+        ext_icon = self._get_icon("nav_extension.png", (18, 18))
+        btn_ext = ctk.CTkButton(
+            self.sidebar,
+            image=ext_icon,
+            compound="left",
+            text="  Extension",
+            anchor="w",
+            height=36,
+            corner_radius=8,
+            fg_color="transparent",
+            hover_color="#2563EB",
+            text_color="#FFFFFF",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=lambda: self.show_page("extension"),
+        )
+        btn_ext.pack(fill="x", padx=10, pady=1)
+        self.nav_buttons["extension"] = btn_ext
 
         # Bottom Settings
         settings_icon = self._get_icon("nav_settings.png", (18, 18))
@@ -4399,7 +4435,8 @@ class HQVideoDownloaderApp(ctk.CTk):
 
     def show_page(self, page: str) -> None:
         for p in ("dashboard_page", "download_page", "image_downloader_page", "channel_hub_page",
-                  "tiktok_hub_page", "ig_hub_page", "x_hub_page", "converter_page", "sites_page"):
+                  "tiktok_hub_page", "ig_hub_page", "x_hub_page", "converter_page", "sites_page",
+                  "extension_page"):
             if hasattr(self, p):
                 getattr(self, p).grid_forget()
 
@@ -4434,6 +4471,10 @@ class HQVideoDownloaderApp(ctk.CTk):
         elif page == "sites":
             active = self.sites_page
             title_text = "More Platforms"
+        elif page == "extension":
+            active = self.extension_page
+            title_text = "🧩  Browser Extension"
+            self._refresh_extension_status()
         else:
             active = self.dashboard_page
             title_text = "Dashboard"
@@ -4447,6 +4488,253 @@ class HQVideoDownloaderApp(ctk.CTk):
                 button.configure(fg_color="#2563EB", text_color="#FFFFFF")
             else:
                 button.configure(fg_color="transparent", text_color="#94A3B8")
+
+
+    # -- Extension Page --
+
+    def _build_extension_page(self) -> None:
+        """Build the browser extension installation and status page."""
+        page = self.extension_page
+        page.grid_columnconfigure(0, weight=1)
+
+        # Header card
+        header = ctk.CTkFrame(page, fg_color=SURFACE, corner_radius=12)
+        header.grid(row=0, column=0, sticky="ew", padx=24, pady=(20, 0))
+        header.grid_columnconfigure(1, weight=1)
+
+        dot_frame = ctk.CTkFrame(header, fg_color="transparent")
+        dot_frame.grid(row=0, column=0, padx=(18, 8), pady=18)
+        self._ext_status_dot = ctk.CTkLabel(
+            dot_frame,
+            text="●",
+            text_color="#6B7280",
+            font=ctk.CTkFont(size=22, weight="bold"),
+            width=20,
+        )
+        self._ext_status_dot.pack()
+
+        title_col = ctk.CTkFrame(header, fg_color="transparent")
+        title_col.grid(row=0, column=1, sticky="w", pady=14)
+        ctk.CTkLabel(
+            title_col,
+            text="🧩  Browser Extension",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=INK,
+            anchor="w",
+        ).pack(anchor="w")
+        self._ext_status_label = ctk.CTkLabel(
+            title_col,
+            text="Status: Not checked",
+            font=ctk.CTkFont(size=12),
+            text_color=MUTED,
+            anchor="w",
+        )
+        self._ext_status_label.pack(anchor="w")
+
+        btn_col = ctk.CTkFrame(header, fg_color="transparent")
+        btn_col.grid(row=0, column=2, padx=(0, 18), pady=14)
+        ctk.CTkButton(
+            btn_col,
+            text="📂  Open Folder",
+            height=34,
+            corner_radius=8,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=BLUE,
+            hover_color=BLUE_HOVER,
+            command=self._open_extension_folder,
+        ).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(
+            btn_col,
+            text="ℹ  Install Guide",
+            height=34,
+            corner_radius=8,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color="transparent",
+            border_width=1,
+            border_color=BORDER,
+            text_color=INK,
+            hover_color=SURFACE,
+            command=self._show_extension_install_guide,
+        ).pack(side="left")
+
+        # Steps card
+        steps_frame = ctk.CTkFrame(page, fg_color=SURFACE, corner_radius=12)
+        steps_frame.grid(row=1, column=0, sticky="ew", padx=24, pady=12)
+        steps_frame.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            steps_frame,
+            text="📋  Chrome / Edge Installation",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=INK,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w", padx=18, pady=(14, 6))
+        ext_folder = self._get_extension_folder_path()
+        _steps = [
+            ("1", "Open Chrome -> chrome://extensions  (or Edge -> edge://extensions)"),
+            ("2", "Enable Developer mode toggle (top-right corner)"),
+            ("3", "Click Load unpacked button"),
+            ("4", "Browse to:  " + ext_folder),
+            ("5", "DeepX Vision Downloader icon will appear in your toolbar"),
+            ("6", "Visit any video site - the download button appears automatically"),
+        ]
+        for i, (num, step_text) in enumerate(_steps):
+            row_frame = ctk.CTkFrame(steps_frame, fg_color="transparent")
+            row_frame.grid(row=i + 1, column=0, sticky="ew", padx=14, pady=2)
+            row_frame.grid_columnconfigure(1, weight=1)
+            ctk.CTkLabel(
+                row_frame,
+                text=" " + num + " ",
+                width=28,
+                height=28,
+                corner_radius=14,
+                fg_color="#2563EB",
+                text_color="#FFFFFF",
+                font=ctk.CTkFont(size=12, weight="bold"),
+            ).grid(row=0, column=0, padx=(4, 10), pady=4)
+            ctk.CTkLabel(
+                row_frame,
+                text=step_text,
+                font=ctk.CTkFont(size=12),
+                text_color=INK,
+                anchor="w",
+                wraplength=500,
+                justify="left",
+            ).grid(row=0, column=1, sticky="w")
+        copy_row = ctk.CTkFrame(steps_frame, fg_color="transparent")
+        copy_row.grid(row=len(_steps) + 1, column=0, sticky="w", padx=14, pady=(4, 14))
+        ctk.CTkButton(
+            copy_row,
+            text="📋  Copy Path",
+            height=30, corner_radius=6,
+            font=ctk.CTkFont(size=11),
+            fg_color="#0F172A", hover_color="#1E293B",
+            command=self._copy_extension_path,
+        ).pack(side="left", padx=4)
+        ctk.CTkButton(
+            copy_row,
+            text="📦  Auto Install",
+            height=30, corner_radius=6,
+            font=ctk.CTkFont(size=11),
+            fg_color="#2563EB", hover_color="#1D4ED8",
+            command=self._auto_install_extension,
+        ).pack(side="left", padx=4)
+
+        # Features card
+        feat_frame = ctk.CTkFrame(page, fg_color=SURFACE, corner_radius=12)
+        feat_frame.grid(row=2, column=0, sticky="ew", padx=24, pady=(0, 20))
+        feat_frame.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            feat_frame,
+            text="✨  Extension Features",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=INK, anchor="w",
+        ).grid(row=0, column=0, sticky="w", padx=18, pady=(14, 6))
+        _features = [
+            ("🎬", "Floating download button on every video (YouTube, Instagram, TikTok, Facebook...)"),
+            ("⚡", "1-click download - instantly queued in DeepX without leaving the page"),
+            ("📄", "Detects HLS streams and direct file links automatically"),
+            ("🔑", "Passes browser cookies securely - no bot-detection errors"),
+            ("📊", "YouTube quality chooser: 4K, 1080p, 720p, audio-only"),
+            ("🛡", "Shadow DOM button - cannot conflict with site JS"),
+        ]
+        for i, (icon, feat_text) in enumerate(_features):
+            row_f = ctk.CTkFrame(feat_frame, fg_color="transparent")
+            row_f.grid(row=i + 1, column=0, sticky="w", padx=18, pady=2)
+            ctk.CTkLabel(row_f, text=icon, font=ctk.CTkFont(size=15), width=26).pack(side="left")
+            ctk.CTkLabel(
+                row_f, text=feat_text, font=ctk.CTkFont(size=12),
+                text_color=INK, anchor="w",
+            ).pack(side="left", padx=6)
+        ctk.CTkFrame(feat_frame, fg_color="transparent", height=12).grid(row=len(_features) + 1, column=0)
+
+    def _get_extension_folder_path(self) -> str:
+        """Return absolute path to the browser_extension folder."""
+        import pathlib
+        try:
+            from app.utils import get_asset_path
+            ext = get_asset_path("browser_extension")
+            if ext.exists():
+                return str(ext)
+        except Exception:
+            pass
+        return str(pathlib.Path(__file__).parent.parent / "browser_extension")
+
+    def _refresh_extension_status(self) -> None:
+        """Check IPC bridge availability."""
+        import threading
+        def _check():
+            import socket
+            connected = False
+            for port in [18932, 18933, 18934, 18935]:
+                try:
+                    s = socket.create_connection(("127.0.0.1", port), timeout=0.5)
+                    s.close()
+                    connected = True
+                    break
+                except Exception:
+                    continue
+            def _ui():
+                try:
+                    if connected:
+                        self._ext_status_dot.configure(text_color="#22C55E")
+                        self._ext_status_label.configure(text="✅  IPC bridge active - extension ready!")
+                    else:
+                        self._ext_status_dot.configure(text_color="#EF4444")
+                        self._ext_status_label.configure(text="⚠  IPC offline - make sure DeepX is running")
+                except Exception:
+                    pass
+            self.after(0, _ui)
+        threading.Thread(target=_check, daemon=True).start()
+
+    def _open_extension_folder(self) -> None:
+        """Open browser_extension in Explorer."""
+        import subprocess
+        folder = self._get_extension_folder_path()
+        try:
+            subprocess.Popen(["explorer", folder])
+        except Exception as exc:
+            messagebox.showerror("Error", "Cannot open: " + folder + " - " + str(exc))
+
+    def _copy_extension_path(self) -> None:
+        """Copy extension folder path to clipboard."""
+        folder = self._get_extension_folder_path()
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(folder)
+            messagebox.showinfo("Copied!", "Path copied: " + folder)
+        except Exception as exc:
+            messagebox.showerror("Error", str(exc))
+
+    def _auto_install_extension(self) -> None:
+        """Run install_extension.bat or open the folder."""
+        import subprocess, pathlib
+        bat = pathlib.Path(self._get_extension_folder_path()) / "install_extension.bat"
+        if bat.exists():
+            try:
+                subprocess.Popen(["cmd", "/c", str(bat)], cwd=str(bat.parent))
+                return
+            except Exception:
+                pass
+        self._open_extension_folder()
+
+    def _show_extension_install_guide(self) -> None:
+        """Show popup with installation guide."""
+        ext_folder = self._get_extension_folder_path()
+        sep = "=" * 48
+        guide = ("DeepX Vision Downloader - Extension Install Guide" + chr(10)
+                 + sep + chr(10) + chr(10)
+                 + "CHROME / EDGE:" + chr(10)
+                 + "  1. chrome://extensions  or  edge://extensions" + chr(10)
+                 + "  2. Enable Developer mode toggle" + chr(10)
+                 + "  3. Click Load unpacked" + chr(10)
+                 + "  4. Select: " + ext_folder + chr(10) + chr(10)
+                 + "FIREFOX:" + chr(10)
+                 + "  1. about:debugging > This Firefox" + chr(10)
+                 + "  2. Load Temporary Add-on" + chr(10)
+                 + "  3. Select manifest.firefox.json in: " + ext_folder + chr(10) + chr(10)
+                 + "After install, open any video site to see the" + chr(10)
+                 + "download button appear automatically!")
+        messagebox.showinfo("Extension Install Guide", guide)
 
     def _go_to_downloads(self) -> None:
         self.show_page("downloads")
