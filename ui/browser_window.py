@@ -1040,7 +1040,7 @@ def ensure_browser_extension(ipc_port: int = 0, browser_name: str = "Google Chro
                 "matches": ["<all_urls>"],
                 "js": ["content.js"],
                 "run_at": "document_start",
-                "all_frames": False
+                "all_frames": True
             }
         ]
     }
@@ -1497,6 +1497,96 @@ document.addEventListener('DOMContentLoaded', async () => {
             .deepx-video-overlay-btn {
                 top: 12px !important;
                 right: 12px !important;
+            }
+
+            /* IDM-Style Floating Video Download Bar */
+            .deepx-idm-video-bar {
+                position: absolute !important;
+                top: 12px !important;
+                right: 12px !important;
+                z-index: 2147483647 !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                font-family: "Times New Roman", serif !important;
+                user-select: none !important;
+                opacity: 0.92 !important;
+                transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease !important;
+                box-shadow: 0 4px 18px rgba(0, 0, 0, 0.75) !important;
+                border-radius: 6px !important;
+                border: 1px solid rgba(56, 189, 248, 0.5) !important;
+                background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%) !important;
+                cursor: pointer !important;
+                height: 32px !important;
+                line-height: 1 !important;
+                pointer-events: auto !important;
+            }
+            .deepx-idm-video-bar:hover {
+                opacity: 1 !important;
+                transform: scale(1.03) !important;
+                border-color: #38BDF8 !important;
+                box-shadow: 0 6px 24px rgba(37, 99, 235, 0.65) !important;
+            }
+            .deepx-idm-main-btn {
+                display: inline-flex !important;
+                align-items: center !important;
+                gap: 6px !important;
+                padding: 0 10px !important;
+                height: 100% !important;
+                color: #FFFFFF !important;
+                font-size: 12px !important;
+                font-weight: 700 !important;
+                background: transparent !important;
+                border-right: 1px solid rgba(255, 255, 255, 0.15) !important;
+                transition: background 0.15s ease !important;
+            }
+            .deepx-idm-main-btn:hover {
+                background: rgba(37, 99, 235, 0.3) !important;
+            }
+            .deepx-idm-arrow-btn {
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                width: 26px !important;
+                height: 100% !important;
+                color: #94A3B8 !important;
+                font-size: 11px !important;
+                background: transparent !important;
+                transition: background 0.15s ease, color 0.15s ease !important;
+            }
+            .deepx-idm-arrow-btn:hover {
+                background: rgba(255, 255, 255, 0.15) !important;
+                color: #FFFFFF !important;
+            }
+            .deepx-idm-dropdown {
+                position: absolute !important;
+                top: 36px !important;
+                right: 0 !important;
+                background: #0F172A !important;
+                border: 1px solid #1E293B !important;
+                border-radius: 8px !important;
+                padding: 6px 0 !important;
+                min-width: 185px !important;
+                box-shadow: 0 12px 30px rgba(0, 0, 0, 0.85) !important;
+                display: none !important;
+                flex-direction: column !important;
+                z-index: 2147483647 !important;
+            }
+            .deepx-idm-dropdown.show {
+                display: flex !important;
+            }
+            .deepx-idm-menu-item {
+                padding: 8px 14px !important;
+                color: #F8FAFC !important;
+                font-size: 12px !important;
+                cursor: pointer !important;
+                display: flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+                transition: background 0.15s ease !important;
+            }
+            .deepx-idm-menu-item:hover {
+                background: #2563EB !important;
+                color: #FFFFFF !important;
             }
         `;
         (document.head || document.documentElement).appendChild(styleEl);
@@ -1983,6 +2073,197 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+
+    // 2.5 IDM-Style Floating Video Panel Bar
+    function createIdmBar(getUrlFn, getTitleFn) {
+        const bar = document.createElement('div');
+        bar.className = 'deepx-idm-video-bar';
+        bar.title = 'DeepX Vision - Download Video';
+
+        const mainBtn = document.createElement('div');
+        mainBtn.className = 'deepx-idm-main-btn';
+        mainBtn.innerHTML = '<span>⚡</span> <span>Download this video</span>';
+
+        const arrowBtn = document.createElement('div');
+        arrowBtn.className = 'deepx-idm-arrow-btn';
+        arrowBtn.textContent = '▼';
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'deepx-idm-dropdown';
+
+        const itemVideo = document.createElement('div');
+        itemVideo.className = 'deepx-idm-menu-item';
+        itemVideo.innerHTML = '<span>🎬</span> <span>Best Quality (1080p / 4K)</span>';
+
+        const itemAudio = document.createElement('div');
+        itemAudio.className = 'deepx-idm-menu-item';
+        itemAudio.innerHTML = '<span>🎵</span> <span>Download Audio (MP3)</span>';
+
+        const itemApp = document.createElement('div');
+        itemApp.className = 'deepx-idm-menu-item';
+        itemApp.innerHTML = '<span>⚡</span> <span>Open DeepX App</span>';
+
+        dropdown.appendChild(itemVideo);
+        dropdown.appendChild(itemAudio);
+        dropdown.appendChild(itemApp);
+
+        function triggerDownload(type) {
+            const u = (typeof getUrlFn === 'function' ? getUrlFn() : getUrlFn) || window.location.href;
+            mainBtn.innerHTML = '<span>✓</span> <span>Queued!</span>';
+            bar.style.borderColor = '#10B981';
+            bar.style.background = '#10B981';
+            queueDownload(u, type);
+            setTimeout(() => {
+                mainBtn.innerHTML = '<span>⚡</span> <span>Download this video</span>';
+                bar.style.borderColor = 'rgba(56, 189, 248, 0.5)';
+                bar.style.background = 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)';
+            }, 2200);
+        }
+
+        mainBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            triggerDownload('video');
+        };
+
+        arrowBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropdown.classList.toggle('show');
+        };
+
+        itemVideo.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropdown.classList.remove('show');
+            triggerDownload('video');
+        };
+
+        itemAudio.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropdown.classList.remove('show');
+            triggerDownload('audio');
+        };
+
+        itemApp.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropdown.classList.remove('show');
+            returnToDownloader();
+        };
+
+        document.addEventListener('click', (e) => {
+            if (!bar.contains(e.target)) {
+                dropdown.classList.remove('show');
+            }
+        });
+
+        bar.appendChild(mainBtn);
+        bar.appendChild(arrowBtn);
+        bar.appendChild(dropdown);
+        return bar;
+    }
+
+    function injectIdmVideoBars() {
+        // A. YouTube Player (#movie_player or .html5-video-player)
+        if (window.location.hostname.includes('youtube.com')) {
+            const ytPlayer = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+            if (ytPlayer && !ytPlayer.querySelector('.deepx-idm-video-bar')) {
+                const bar = createIdmBar(() => window.location.href, () => document.title);
+                ytPlayer.appendChild(bar);
+            }
+        }
+
+        // B. TikTok Video Feed & Watch Pages
+        if (window.location.hostname.includes('tiktok.com')) {
+            const ttContainers = document.querySelectorAll('div[data-e2e="recommend-list-item-container"], .xgplayer, div[class*="DivVideoFeed"], div[class*="DivItemContainer"]');
+            for (let i = 0; i < ttContainers.length; i++) {
+                const c = ttContainers[i];
+                if (c.querySelector('.deepx-idm-video-bar')) continue;
+                const comp = window.getComputedStyle(c);
+                if (comp.position === 'static') c.style.position = 'relative';
+                const bar = createIdmBar(() => {
+                    const a = c.querySelector('a[href*="/video/"]');
+                    return a ? a.href : window.location.href;
+                }, () => document.title);
+                c.appendChild(bar);
+            }
+        }
+
+        // C. Instagram Reels & Post Dialogs
+        if (window.location.hostname.includes('instagram.com')) {
+            const igVideos = document.querySelectorAll('article video, div[role="dialog"] video');
+            for (let i = 0; i < igVideos.length; i++) {
+                const v = igVideos[i];
+                const p = v.parentElement;
+                if (!p || p.querySelector('.deepx-idm-video-bar')) continue;
+                const comp = window.getComputedStyle(p);
+                if (comp.position === 'static') p.style.position = 'relative';
+                const bar = createIdmBar(() => {
+                    const a = p.closest('article')?.querySelector('a[href*="/reel/"], a[href*="/p/"]');
+                    return a ? a.href : window.location.href;
+                }, () => document.title);
+                p.appendChild(bar);
+            }
+        }
+
+        // D. Twitter / X Video Player
+        if (window.location.hostname.includes('x.com') || window.location.hostname.includes('twitter.com')) {
+            const xPlayers = document.querySelectorAll('div[data-testid="videoPlayer"], div[data-testid="videoComponent"]');
+            for (let i = 0; i < xPlayers.length; i++) {
+                const xp = xPlayers[i];
+                if (xp.querySelector('.deepx-idm-video-bar')) continue;
+                const comp = window.getComputedStyle(xp);
+                if (comp.position === 'static') xp.style.position = 'relative';
+                const bar = createIdmBar(() => window.location.href, () => document.title);
+                xp.appendChild(bar);
+            }
+        }
+
+        // E. Facebook Video Players
+        if (window.location.hostname.includes('facebook.com')) {
+            const fbVideos = document.querySelectorAll('div[data-pagelet*="Video"] video, div[role="main"] video');
+            for (let i = 0; i < fbVideos.length; i++) {
+                const v = fbVideos[i];
+                const p = v.parentElement;
+                if (!p || p.querySelector('.deepx-idm-video-bar')) continue;
+                const comp = window.getComputedStyle(p);
+                if (comp.position === 'static') p.style.position = 'relative';
+                const bar = createIdmBar(() => window.location.href, () => document.title);
+                p.appendChild(bar);
+            }
+        }
+
+        // F. Generic HTML5 <video> elements on ANY website across the internet
+        const allVideos = document.querySelectorAll('video');
+        for (let i = 0; i < allVideos.length; i++) {
+            const vid = allVideos[i];
+            if (vid.closest('#deepx-top-control-bar') || vid.closest('#deepx-floating-btn')) continue;
+            
+            let container = vid.parentElement;
+            if (!container) continue;
+            if (container.querySelector('.deepx-idm-video-bar')) continue;
+
+            const rect = vid.getBoundingClientRect();
+            if (rect.width < 140 || rect.height < 90) continue;
+
+            const comp = window.getComputedStyle(container);
+            if (comp.position === 'static') container.style.position = 'relative';
+
+            const bar = createIdmBar(() => {
+                if (vid.currentSrc && vid.currentSrc.startsWith('http') && !vid.currentSrc.startsWith('blob:')) {
+                    return vid.currentSrc;
+                }
+                if (vid.src && vid.src.startsWith('http') && !vid.src.startsWith('blob:')) {
+                    return vid.src;
+                }
+                return window.location.href;
+            }, () => document.title);
+            container.appendChild(bar);
+        }
+    }
+
     // 5. Initialize & Observe DOM
     function initDeepX() {
         if (!document.body && !document.documentElement) {
@@ -1992,12 +2273,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         injectGlobalStyles();
         createTopControlBar();
         createFloatingWidget();
+        injectIdmVideoBars();
         injectCardButtons();
-        setInterval(injectCardButtons, 1200);
+        setInterval(() => {
+            injectIdmVideoBars();
+            injectCardButtons();
+        }, 1200);
         setInterval(() => {
             if (!document.getElementById('deepx-top-control-bar')) createTopControlBar();
             if (!document.getElementById('deepx-floating-btn')) createFloatingWidget();
         }, 1500);
+
+        // Instant re-injection on YouTube SPA navigations
+        window.addEventListener('yt-navigate-finish', () => {
+            setTimeout(injectIdmVideoBars, 500);
+            setTimeout(injectIdmVideoBars, 1500);
+        });
     }
 
     if (document.readyState === 'loading') {

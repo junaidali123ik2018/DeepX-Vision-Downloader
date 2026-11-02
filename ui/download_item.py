@@ -191,7 +191,7 @@ class DownloadItem(ctk.CTkFrame):
 
         if status == DownloadStatus.DOWNLOADING:
             remaining = (total - downloaded) / speed if total and speed else None
-            detail = f"{quality}  •  {format_bytes(downloaded)} / {format_bytes(total)}  •  {format_speed(speed)}  •  {format_eta(remaining)} left"
+            detail = f"{quality}  •  {format_bytes(downloaded)} / {format_bytes(total)}  •  {format_speed(speed)}  •  ⚡ Turbo 10x  •  {format_eta(remaining)} left"
             if not self._thumb_loaded:
                 self.icon.configure(text="↓", fg_color=BLUE_BG, text_color=BLUE_FG)
             self.button.configure(text="Pause", state="normal", fg_color=BLUE_BTN, hover_color=BLUE_BTN_HOVER, text_color=BLUE_BTN_TEXT)

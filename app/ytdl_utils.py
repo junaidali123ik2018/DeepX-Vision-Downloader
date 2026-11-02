@@ -122,10 +122,15 @@ def apply_ytdl_robust_options(options: dict) -> dict:
         options["impersonate"] = target
 
     # Ensure retries and stability
-    options.setdefault("retries", 3)
-    options.setdefault("fragment_retries", 3)
+    options.setdefault("retries", 5)
+    options.setdefault("fragment_retries", 5)
     options.setdefault("skip_unavailable_fragments", True)
     options.setdefault("socket_timeout", 30)
+
+    # IDM-Style Dynamic Multi-Threading & Segmentation (Turbo 10x Concurrent Streams)
+    options.setdefault("concurrent_fragment_downloads", 10)
+    options.setdefault("http_chunk_size", 10485760)
+    options.setdefault("buffersize", 1048576)
 
     return options
 

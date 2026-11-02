@@ -339,6 +339,10 @@ class DownloadManager:
             "progress_hooks": [progress_hook],
             "postprocessor_hooks": [postprocessor_hook],
             "postprocessors": postprocessors,
+            # IDM-Style Dynamic Multi-Threading & Segmentation (Turbo 10x Concurrent Streams)
+            "concurrent_fragment_downloads": 10,
+            "http_chunk_size": 10485760,
+            "buffersize": 1048576,
         }
         if ffmpeg_path:
             options["ffmpeg_location"] = ffmpeg_path
