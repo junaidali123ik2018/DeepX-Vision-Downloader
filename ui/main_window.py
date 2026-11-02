@@ -4322,9 +4322,14 @@ class HQVideoDownloaderApp(ctk.CTk):
         self.after(0, _focus)
 
     def _on_browser_download_received(
-        self, url: str, cookies_path: str = "", title: str = "", media_type: str = "video"
+        self, url: str, cookies_path: str = "", title: str = "", media_type: str = "video", quality: str = "Best Available"
     ) -> None:
         def _do_enqueue():
+            if quality and quality != "Best Available":
+                try:
+                    self.quality_choice_var.set(quality)
+                except Exception:
+                    pass
             if cookies_path and Path(cookies_path).is_file():
                 platform = detect_platform_from_url(url)
                 from ui.settings_dialog import is_platform_cookie_authenticated

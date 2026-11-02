@@ -1,13 +1,13 @@
 {
-  "version": "2.5.2",
-  "release_date": "2026-10-17",
-  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.5.2/DeepX_Vision_Downloader_Pro_Setup_v2.5.2.exe",
+  "version": "2.5.4",
+  "release_date": "2026-11-02",
+  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.5.4/DeepX_Vision_Downloader_Pro_Setup_v2.5.4.exe",
   "changelog": [
-    "Integrated Browser & Chrome Extensions: 1-Click floating and in-feed download buttons",
-    "Choice of Built-in WebView or Standalone Browser (Chrome/Edge/Brave) in Settings",
-    "1-Click Auto-Update & Silent Replace: Instantly upgrades and restarts with 0 clicks",
-    "Windowless background conversion and unified Video/Audio format selector",
-    "Enhanced session persistence with local encryption"
+    "High-Performance IDM Multi-Segment HTTP Range Engine: 10x parallel chunk downloading for direct files (.zip, .exe, .iso, .mp4)",
+    "YouTube Player Metadata Sniffer: Automatically extracts available resolutions (1080p, 720p, 480p, MP3) with exact file sizes",
+    "Shadow DOM Protected Floating Video Bar: Website CSS can never distort or override the download bar",
+    "Standalone Chromium MV3 Extension (browser_extension) with 1-click Windows installer and Native Messaging support",
+    "Enhanced Single-Instance & Task Resumption Guards"
   ],
   "mandatory": false
 }

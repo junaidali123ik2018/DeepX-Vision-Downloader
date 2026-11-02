@@ -281,6 +281,52 @@ def _build_injection_script() -> str:
         if (window.__deepx_injected) return;
         window.__deepx_injected = true;
 
+        // YouTube Player Metadata Sniffer (adapted from Awesome Downloader)
+        if (window.location.hostname.includes('youtube.com') && !window.__deepx_yt_hooked) {
+            window.__deepx_yt_hooked = true;
+            window.__deepx_yt_formats = [];
+            function parseYtData(data) {
+                try {
+                    const formats = data?.streamingData?.formats || [];
+                    const adaptive = data?.streamingData?.adaptiveFormats || [];
+                    const all = [...formats, ...adaptive];
+                    const list = [];
+                    for (const f of all) {
+                        if (f.qualityLabel && !list.some(x => x.quality === f.qualityLabel)) {
+                            list.push({
+                                quality: f.qualityLabel,
+                                fps: f.fps || 30,
+                                size: f.contentLength ? (parseInt(f.contentLength) / (1024*1024)).toFixed(1) + ' MB' : null
+                            });
+                        }
+                    }
+                    if (list.length > 0) {
+                        window.__deepx_yt_formats = list;
+                        window.dispatchEvent(new CustomEvent('deepx_yt_formats_ready', { detail: list }));
+                    }
+                } catch(e) {}
+            }
+            const origFetch = window.fetch;
+            window.fetch = function(...args) {
+                const res = Reflect.apply(origFetch, this, args);
+                const url = args[0]?.url || args[0];
+                if (typeof url === 'string' && url.includes('/youtubei/v1/player')) {
+                    res.then(r => r.clone().json()).then(d => parseYtData(d)).catch(() => {});
+                }
+                return res;
+            };
+            const origOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+                if (typeof url === 'string' && url.includes('/youtubei/v1/player')) {
+                    this.addEventListener('load', () => {
+                        try { parseYtData(JSON.parse(this.responseText)); } catch(e) {}
+                    }, { once: true });
+                }
+                return Reflect.apply(origOpen, this, [method, url, ...rest]);
+            };
+            if (window.ytInitialPlayerResponse) parseYtData(window.ytInitialPlayerResponse);
+        }
+
         function injectUI() {
             // 0. Inject Global Styles for Card Buttons
             if (!document.getElementById('deepx-card-styles')) {
@@ -803,6 +849,10 @@ class BrowserIPCServer:
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
 
+            def do_GET(self):
+                self._send_cors_headers(200)
+                self.wfile.write(b'{"status":"ok","app":"DeepX Vision Downloader","version":"2.5.4"}')
+
             def do_OPTIONS(self):
                 self._send_cors_headers(200)
                 self.wfile.write(b'{"status":"ok"}')
@@ -819,6 +869,7 @@ class BrowserIPCServer:
                         title = data.get("title", "")
                         browser = data.get("browser", "")
                         media_type = data.get("media_type", "video")
+                        quality = data.get("quality", "Best Available")
                         if browser:
                             try:
                                 sync_profile_cookies_to_files(browser)
@@ -826,9 +877,12 @@ class BrowserIPCServer:
                                 pass
                         if url and outer.on_download:
                             try:
-                                outer.on_download(url, cookies_path, title, media_type)
+                                outer.on_download(url, cookies_path, title, media_type, quality)
                             except TypeError:
-                                outer.on_download(url, cookies_path, title)
+                                try:
+                                    outer.on_download(url, cookies_path, title, media_type)
+                                except TypeError:
+                                    outer.on_download(url, cookies_path, title)
                         self._send_cors_headers(200)
                         self.wfile.write(b'{"status":"ok"}')
                         return
@@ -2107,12 +2161,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         dropdown.appendChild(itemAudio);
         dropdown.appendChild(itemApp);
 
-        function triggerDownload(type) {
+        // Dynamically add detected YouTube resolutions if available
+        function updateYtDropdown(formats) {
+            if (!formats || !formats.length) return;
+            const existingDynamic = dropdown.querySelectorAll('.deepx-dynamic-q');
+            existingDynamic.forEach(el => el.remove());
+            itemVideo.style.display = 'none';
+            for (const f of formats.slice(0, 4)) {
+                const qItem = document.createElement('div');
+                qItem.className = 'deepx-idm-menu-item deepx-dynamic-q';
+                qItem.innerHTML = `<span>🎬</span> <span>${f.quality}</span> ${f.size ? '<span style="margin-left:auto;font-size:10px;opacity:0.75;background:rgba(255,255,255,0.1);padding:2px 4px;border-radius:3px">' + f.size + '</span>' : ''}`;
+                qItem.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropdown.classList.remove('show');
+                    triggerDownload('video', f.quality);
+                };
+                dropdown.insertBefore(qItem, itemAudio);
+            }
+        }
+        if (window.__deepx_yt_formats && window.__deepx_yt_formats.length) {
+            updateYtDropdown(window.__deepx_yt_formats);
+        }
+        window.addEventListener('deepx_yt_formats_ready', (e) => {
+            updateYtDropdown(e.detail);
+        });
+
+        function triggerDownload(type, quality = 'Best Available') {
             const u = (typeof getUrlFn === 'function' ? getUrlFn() : getUrlFn) || window.location.href;
             mainBtn.innerHTML = '<span>✓</span> <span>Queued!</span>';
             bar.style.borderColor = '#10B981';
             bar.style.background = '#10B981';
-            queueDownload(u, type);
+            queueDownload(u, type, quality);
             setTimeout(() => {
                 mainBtn.innerHTML = '<span>⚡</span> <span>Download this video</span>';
                 bar.style.borderColor = 'rgba(56, 189, 248, 0.5)';

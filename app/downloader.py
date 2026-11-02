@@ -23,6 +23,7 @@ from app.path_manager import (
 )
 from app.download_history import DownloadRecord, history_store
 from app.ytdl_utils import apply_ytdl_robust_options, download_tiktok_fallback
+from app.http_engine import is_direct_file_url, download_segmented_http_task
 from app.custom_extractors import (
     apply_custom_patches,
     is_custom_site_url,
@@ -376,6 +377,14 @@ class DownloadManager:
             else:
                 options["cookiesfrombrowser"] = (cookie_src,)
 
+        # Fast-Path: IDM-Style High-Performance Multi-Segment HTTP Engine for direct files
+        if is_direct_file_url(task.url):
+            try:
+                if download_segmented_http_task(task, self._notify, num_connections=10):
+                    return
+            except Exception:
+                pass
+
         target_file = Path(task.destination) / "output.mp4"
         clean_title = task.filename
         reserved_final_path: Path | None = None
@@ -568,6 +577,13 @@ class DownloadManager:
                         return
                 except Exception:
                     pass
+
+            # Automatic direct HTTP IDM-style segmented fallback
+            try:
+                if download_segmented_http_task(task, self._notify, num_connections=10):
+                    return
+            except Exception:
+                pass
 
             # Automatic cloud scraper fallback via api.seocloud.biz
             try:
