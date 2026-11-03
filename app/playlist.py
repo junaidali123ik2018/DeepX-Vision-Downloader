@@ -115,7 +115,10 @@ def is_youtube_channel_url(url: str) -> bool:
 def is_playlist_or_channel(url: str) -> bool:
     """Returns True if the URL points to a playlist, channel, or profile."""
     u = url.lower().strip()
-    if "playlist?list=" in u or "&list=" in u or "/playlist/" in u or "/playlists" in u:
+    # A single video watch URL (even with mix / radio list &list=RD...) is NOT a playlist
+    if "watch?v=" in u or "/shorts/" in u or "youtu.be/" in u:
+        return False
+    if "playlist?list=" in u or "/playlist/" in u or "/playlists" in u:
         return True
     if "youtube.com/@" in u or "youtube.com/channel/" in u or "youtube.com/c/" in u or "youtube.com/user/" in u:
         return True

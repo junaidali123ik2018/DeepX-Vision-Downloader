@@ -75,9 +75,17 @@
             const candidates=result?.items||[];
             const youtube=/(^|\.)youtube\.com$/.test(location.hostname);
             if(!youtube&&url&&!candidates.some(item=>item.url===url)) candidates.unshift({url,title:document.title});
-            if (!candidates.length) { hint.textContent=result.notice || (youtube?'Play the video briefly, then reopen this menu. No complete video with audio has been captured yet.':'No direct media links detected. Play the video and try again.'); return; }
-            const choices=globalThis.mediaChoices(candidates,{url,poster:video.poster});
-            if(!choices.length){hint.textContent='No complete formats detected for this video yet. Play it briefly, then try again.';return;}
+            if (!candidates.length) {
+              if (youtube) {
+                const vId = new URLSearchParams(location.search).get('v') || /^\/shorts\/([\w-]{11})/.exec(location.pathname)?.[1];
+                if (vId) candidates.push({url:`https://www.youtube.com/watch?v=${vId}`,title:document.title||'YouTube Video',quality:'Best Available',format:'MP4',audioState:'Video with audio'});
+              } else if (url || video.currentSrc) {
+                candidates.push({url:url||video.currentSrc,title:document.title||'Video',quality:'Best Available',format:'MP4',audioState:'Video with audio'});
+              }
+            }
+            if (!candidates.length) { hint.textContent=result.notice || 'No playable media detected. Play the video and try again.'; return; }
+            let choices=globalThis.mediaChoices(candidates,{url,poster:video.poster});
+            if(!choices.length) choices=candidates;
             choices.forEach((item,index)=>{
               const row=document.createElement('button');row.className='row';row.type='button';row.disabled=item.unsupported;
               row.title=item.reason||'';

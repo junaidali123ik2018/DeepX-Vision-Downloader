@@ -1,13 +1,13 @@
 {
-  "version": "2.5.7",
+  "version": "2.5.8",
   "release_date": "2026-11-03",
-  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.5.7/DeepX_Vision_Downloader_Pro_Setup_v2.5.7.exe",
+  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.5.8/DeepX_Vision_Downloader_Pro_Setup_v2.5.8.exe",
   "changelog": [
-    "2.5.7: Fixed browser extension service worker syntax error and loopback permissions",
-    "Fixed long 2-hour video downloads by disabling artificial chunk limits and adding seamless auto-resume",
-    "Bypassed metadata extraction hang on direct movie/CDN URLs with instant IDM multi-segment engine",
-    "Added Chrome TLS impersonation probe for anti-bot protected movie websites",
-    "Updated unpacked extension in LocalAppData and synced with portable and setup dist"
+    "2.5.8: Fixed extension download button triggering unwanted playlist/channel dialog",
+    "Sanitized YouTube watch URLs to clean single video URLs, stripping &list=RD mixes and channel parameters",
+    "Added allow_playlist_dialog=False guard for direct extension and floating bar clicks",
+    "Added instant fallback formats in floating bar so download options are always 100% available without waiting",
+    "Updated unpacked extension in LocalAppData and recompiled setup installer"
   ],
   "mandatory": false
 }

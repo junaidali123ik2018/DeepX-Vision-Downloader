@@ -249,7 +249,12 @@ api.runtime.onMessage.addListener((message, sender, respond) => {
         let items=globalThis.youtubeMedia.choices(active,youtubeObserved.get(sender.tab.id)||[]);
         if(!capture&&items.some(item=>item.sabrSelection)){
           items=items.filter(item=>!item.sabrSelection);
-          if(!items.length)return {ok:true,items,notice:'Play this video for a few seconds so its streaming session can be captured, then reopen this menu.'};
+        }
+        if(!items.length){
+          items=[
+            {url:`https://www.youtube.com/watch?v=${id}`,title:sender.tab?.title||'YouTube Video',quality:'Best Available',format:'MP4',audioState:'Video with audio',youtubeFormat:'Best Available'},
+            {url:`https://www.youtube.com/watch?v=${id}`,title:sender.tab?.title||'YouTube Video',quality:'Audio Only',format:'MP3',audioState:'Audio track',outputFormat:'mp3',youtubeFormat:'audio:mp3'}
+          ];
         }
         return {ok:true,items};
       }

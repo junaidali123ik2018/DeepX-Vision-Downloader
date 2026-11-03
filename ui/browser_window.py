@@ -905,10 +905,20 @@ class BrowserIPCServer:
                                 pass
 
                         canonical_url = url
+                        yt_vid = None
                         if sabr and isinstance(sabr, dict) and sabr.get("videoId"):
-                            canonical_url = f"https://www.youtube.com/watch?v={sabr.get('videoId')}"
-                        elif referer and ("youtube.com" in referer or "youtu.be" in referer):
-                            canonical_url = referer
+                            yt_vid = sabr.get("videoId")
+                        else:
+                            import re
+                            for check_str in (url, referer):
+                                if check_str and ("youtube.com" in check_str or "youtu.be" in check_str):
+                                    m = re.search(r"(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})", check_str)
+                                    if m:
+                                        yt_vid = m.group(1)
+                                        break
+                        if yt_vid:
+                            # Always canonicalize to clean single video URL without playlist mix params
+                            canonical_url = f"https://www.youtube.com/watch?v={yt_vid}"
                         elif not canonical_url and referer:
                             canonical_url = referer
 

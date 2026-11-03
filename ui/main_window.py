@@ -4392,7 +4392,14 @@ class HQVideoDownloaderApp(ctk.CTk):
                 except Exception:
                     pass
 
-            self._queue_urls([url], cookies_source=cookies_path, custom_title=title, quality_override=quality, http_headers=request_headers or {}, referer=referer)
+            # Ensure clean URL and never open playlist modal when download requested from extension
+            clean_dl_url = url
+            if "youtube.com" in clean_dl_url or "youtu.be" in clean_dl_url:
+                import re
+                v_match = re.search(r"(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})", clean_dl_url)
+                if v_match:
+                    clean_dl_url = f"https://www.youtube.com/watch?v={v_match.group(1)}"
+            self._queue_urls([clean_dl_url], cookies_source=cookies_path, custom_title=title, quality_override=quality, http_headers=request_headers or {}, referer=referer, allow_playlist_dialog=False)
             self.show_page("downloads")
             try:
                 self.deiconify()
@@ -5664,7 +5671,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             done_event.wait()
             return result_holder[0]
 
-    def _queue_urls(self, urls: list[str], cookies_source: str = "", custom_title: str = "", quality_override: str = "", http_headers: dict | None = None, referer: str = "") -> bool:
+    def _queue_urls(self, urls: list[str], cookies_source: str = "", custom_title: str = "", quality_override: str = "", http_headers: dict | None = None, referer: str = "", allow_playlist_dialog: bool = True) -> bool:
         if not self._check_device_not_banned():
             return False
 
@@ -5677,7 +5684,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             messagebox.showwarning("No valid links", "Paste one or more public HTTP or HTTPS video URLs.")
             return False
 
-        if len(valid) == 1 and is_playlist_or_channel(valid[0]):
+        if allow_playlist_dialog and len(valid) == 1 and is_playlist_or_channel(valid[0]):
             self._open_playlist_dialog(initial_url=valid[0])
             return True
 
