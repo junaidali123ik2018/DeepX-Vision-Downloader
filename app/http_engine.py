@@ -115,15 +115,14 @@ def build_request_headers(task: DownloadTask) -> dict[str, str]:
     custom = getattr(task, "http_headers", None) or {}
     if isinstance(custom, dict):
         for k, v in custom.items():
-            k_lower = k.lower()
-            if k_lower in ("user-agent", "referer", "origin", "authorization", "accept"):
-                if isinstance(v, str) and v and not re.search(r"[\r\n]", v):
-                    headers[k] = v
+            if isinstance(v, str) and v and not re.search(r"[\r\n]", v):
+                headers[k] = v
 
     # Forward referer
     referer = getattr(task, "referer", "")
-    if referer and "referer" not in [k.lower() for k in headers]:
+    if referer:
         headers["Referer"] = referer
+        headers["referer"] = referer
 
     return headers
 
@@ -212,7 +211,33 @@ def probe_url(
                     total_size = int(cl)
                 resp.close()
             except Exception as exc:
-                raise RuntimeError(f"Could not connect to URL ({exc})")
+                pass
+
+    # 3. Anti-bot / Cloudflare bypass probe using curl_cffi Chrome impersonation
+    if status_code in (401, 403, 429, 503) or total_size is None or res_headers is None:
+        try:
+            from curl_cffi import requests as c_requests
+            c_sess = c_requests.Session(impersonate="chrome120")
+            c_headers = dict(req_headers)
+            c_resp = c_sess.get(url, headers=c_headers, cookies=cookies or {}, allow_redirects=True, stream=True, timeout=timeout)
+            if c_resp.status_code < 400:
+                status_code = c_resp.status_code
+                res_headers = c_resp.headers
+                final_url = str(c_resp.url)
+                cr = res_headers.get("Content-Range", "")
+                if cr:
+                    match = re.search(r"bytes\s+\d+-\d+/(\d+)", cr)
+                    if match:
+                        total_size = int(match.group(1))
+                        accept_ranges = True
+                cl = res_headers.get("Content-Length")
+                if cl and str(cl).isdigit() and int(cl) > 1:
+                    total_size = int(cl)
+                if res_headers.get("Accept-Ranges", "").lower() == "bytes" or status_code == 206:
+                    accept_ranges = True
+            c_resp.close()
+        except Exception:
+            pass
 
     if res_headers is None:
         raise RuntimeError(f"Server returned status {status_code} with no response headers.")
@@ -286,6 +311,8 @@ def _download_chunk_range(
         timeout=30,
         verify=False,
     ) as response, open(part_path, mode) as f:
+        if response.status_code >= 400:
+            raise RuntimeError(f"HTTP status {response.status_code} for chunk range {curr_start}-{end_byte}")
         for chunk in response.iter_content(chunk_size=chunk_buffer_size):
             if task.cancel_event.is_set() or task.pause_event.is_set():
                 break
@@ -512,6 +539,8 @@ def _download_single_stream(
         timeout=30,
         verify=False,
     ) as response, open(final_output, "wb") as f:
+        if response.status_code >= 400:
+            raise RuntimeError(f"Server returned HTTP Error {response.status_code}")
         total = response.headers.get("Content-Length")
         if total and total.isdigit():
             with task.lock:

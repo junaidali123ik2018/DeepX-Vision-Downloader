@@ -121,16 +121,16 @@ def apply_ytdl_robust_options(options: dict) -> dict:
     if target and "impersonate" not in options:
         options["impersonate"] = target
 
-    # Ensure retries and stability
-    options.setdefault("retries", 5)
-    options.setdefault("fragment_retries", 5)
+    # Ensure retries and stability for long videos (e.g. 2hr+ movies / streams)
+    options.setdefault("retries", 15)
+    options.setdefault("fragment_retries", 15)
+    options.setdefault("file_access_retries", 5)
     options.setdefault("skip_unavailable_fragments", True)
-    options.setdefault("socket_timeout", 30)
-
-    # IDM-Style Dynamic Multi-Threading & Segmentation (Turbo 10x Concurrent Streams)
-    options.setdefault("concurrent_fragment_downloads", 10)
-    options.setdefault("http_chunk_size", 10485760)
+    options.setdefault("socket_timeout", 45)
+    options.setdefault("continuedl", True)
     options.setdefault("buffersize", 1048576)
+    # Concurrent fragment downloads for HLS/DASH fragments
+    options.setdefault("concurrent_fragment_downloads", 4)
 
     return options
 

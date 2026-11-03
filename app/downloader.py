@@ -225,7 +225,7 @@ class DownloadManager:
             return
 
         with task.lock:
-            task.status = DownloadStatus.FETCHING_INFO
+            task.status = DownloadStatus.DOWNLOADING if (task.filename and not task.filename.startswith("Analyzing") and not task.filename.startswith("Preparing")) else DownloadStatus.FETCHING_INFO
             task.error = ""
         self._notify(task)
 
@@ -340,10 +340,13 @@ class DownloadManager:
             "progress_hooks": [progress_hook],
             "postprocessor_hooks": [postprocessor_hook],
             "postprocessors": postprocessors,
-            # IDM-Style Dynamic Multi-Threading & Segmentation (Turbo 10x Concurrent Streams)
-            "concurrent_fragment_downloads": 10,
-            "http_chunk_size": 10485760,
             "buffersize": 1048576,
+            "continuedl": True,
+            "retries": 15,
+            "fragment_retries": 15,
+            "file_access_retries": 5,
+            "extractor_retries": 2,
+            "socket_timeout": 30,
         }
         if ffmpeg_path:
             options["ffmpeg_location"] = ffmpeg_path
@@ -409,7 +412,11 @@ class DownloadManager:
                 try:
                     if is_custom_site_url(task.url):
                         info = resolve_custom_media(task.url, desired_quality=task.quality)
-                    elif task.filename and not task.filename.startswith("Analyzing"):
+                    elif is_direct_file_url(task.url, task.filename):
+                        # Direct media file URL: skip slow generic extractor entirely
+                        raw_title = task.filename or Path(urllib.parse.urlparse(task.url).path).name
+                        info = None
+                    elif task.filename and not task.filename.startswith("Analyzing") and not task.filename.startswith("Preparing"):
                         raw_title = task.filename
                         with task.lock:
                             task.status = DownloadStatus.DOWNLOADING

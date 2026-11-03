@@ -1,22 +1,13 @@
 {
-  "version": "2.5.6",
-  "release_date": "2026-11-02",
-  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.5.4/DeepX_Vision_Downloader_Pro_Setup_v2.5.4.exe",
+  "version": "2.5.7",
+  "release_date": "2026-11-03",
+  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.5.7/DeepX_Vision_Downloader_Pro_Setup_v2.5.7.exe",
   "changelog": [
-    "2.5.6: Fixed direct video / movie downloads from browser extension (netnaija, file servers, CDNs)",
-    "Engineered IDM-Style parallel multi-segment HTTP engine with full browser header, cookie, and referer forwarding",
-    "Modernized application typography from Times New Roman to crisp Segoe UI across all windows and dialogs",
-    "Redesigned download cards with high-contrast status badges and real-time telemetry",
-    "Added anti-bot fallback with curl_cffi Chrome TLS impersonation",
-    "2.5.5: Added Extension tab in sidebar with install guide and status check",
-    "Updated extension files from latest Awesome Downloader v44.9.1",
-    "Extension rebranded to DeepX Vision Downloader",
-    "DeepX HTTP bridge priority in extension background.js",
-    "High-Performance IDM Multi-Segment HTTP Range Engine: 10x parallel chunk downloading for direct files (.zip, .exe, .iso, .mp4)",
-    "YouTube Player Metadata Sniffer: Automatically extracts available resolutions (1080p, 720p, 480p, MP3) with exact file sizes",
-    "Shadow DOM Protected Floating Video Bar: Website CSS can never distort or override the download bar",
-    "Standalone Chromium MV3 Extension (browser_extension) with 1-click Windows installer and Native Messaging support",
-    "Enhanced Single-Instance & Task Resumption Guards"
+    "2.5.7: Fixed browser extension service worker syntax error and loopback permissions",
+    "Fixed long 2-hour video downloads by disabling artificial chunk limits and adding seamless auto-resume",
+    "Bypassed metadata extraction hang on direct movie/CDN URLs with instant IDM multi-segment engine",
+    "Added Chrome TLS impersonation probe for anti-bot protected movie websites",
+    "Updated unpacked extension in LocalAppData and synced with portable and setup dist"
   ],
   "mandatory": false
 }

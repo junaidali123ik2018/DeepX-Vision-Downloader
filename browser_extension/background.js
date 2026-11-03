@@ -96,13 +96,19 @@ function nativeSend(payload) {
   // Try DeepX Vision Downloader HTTP IPC first, then fall back to native messaging
   return sendToDeepX(payload).catch(() => {
     return new Promise((resolve, reject) => {
-      // Chrome callbacks retain useful runtime.lastError diagnostics.
-      if (!globalThis.browser) chrome.runtime.sendNativeMessage(HOST, payload, result => {
-      if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-      else if (!result?.ok) reject(new Error(result?.error || 'The desktop app did not accept this download.'));
-      else resolve(result);
+      if (!globalThis.browser) {
+        chrome.runtime.sendNativeMessage(HOST, payload, result => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else if (!result?.ok) reject(new Error(result?.error || 'The desktop app did not accept this download.'));
+          else resolve(result);
+        });
+      } else {
+        browser.runtime.sendNativeMessage(HOST, payload).then(
+          result => (result?.ok ? resolve(result) : reject(new Error(result?.error || 'Desktop rejected download.'))),
+          reject
+        );
+      }
     });
-    else browser.runtime.sendNativeMessage(HOST, payload).then(result => result?.ok ? resolve(result) : reject(new Error(result?.error || 'Desktop rejected download.')), reject);
   });
 }
 async function enqueue(item, tabId) {
@@ -184,13 +190,13 @@ api.tabs.onUpdated.addListener((tabId, change) => { if (change.status === 'loadi
 api.runtime.onInstalled.addListener(async () => {
   try {
     await api.contextMenus.removeAll();
-    api.contextMenus.create({id: 'awesome-link', title: 'Download with Awesome Downloader', contexts: ['link', 'video', 'audio']});
-    api.contextMenus.create({id: 'awesome-page', title: 'Find downloadable links on this page', contexts: ['page']});
+    api.contextMenus.create({id: 'deepx-link', title: 'Download with DeepX Vision', contexts: ['link', 'video', 'audio']});
+    api.contextMenus.create({id: 'deepx-page', title: 'Find downloadable links on this page', contexts: ['page']});
   } catch (error) { await api.storage.local.set({lastError: error.message}); }
 });
 api.contextMenus.onClicked.addListener(async (info, tab) => {
   try {
-    if (info.menuItemId === 'awesome-page') { await api.tabs.sendMessage(tab.id, {action: 'collectLinks'}); await api.action.setBadgeText({tabId: tab.id, text: 'LINK'}); return; }
+    if (info.menuItemId === 'deepx-page') { await api.tabs.sendMessage(tab.id, {action: 'collectLinks'}); await api.action.setBadgeText({tabId: tab.id, text: 'LINK'}); return; }
     await enqueue({url: info.linkUrl || info.srcUrl, referer: tab?.url},tab?.id);
     await api.action.setBadgeText({tabId: tab.id, text: 'OK'});
   } catch (e) {
@@ -216,8 +222,14 @@ api.runtime.onMessage.addListener((message, sender, respond) => {
     }
     if (message.action === 'remember' && sender.tab) { await remember(sender.tab.id, message.items || []); return {ok: true}; }
     if (message.action === 'download') {
-      const tabId=sender.tab?.id ?? message.tabId;
-      return enqueue({...message.item, referer: sender.tab?.url || message.item?.referer},tabId);
+      const item = message.item || {
+        url: message.url,
+        filename: message.title || message.filename,
+        outputFormat: message.media_type === 'audio' ? 'mp3' : undefined,
+        referer: message.referer || message.url,
+      };
+      const tabId = sender.tab?.id ?? message.tabId;
+      return enqueue({...item, referer: sender.tab?.url || item.referer}, tabId);
     }
     if (message.action === 'list' && !sender.tab) {
       await serial;
