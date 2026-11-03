@@ -96,6 +96,14 @@
                 event.preventDefault();event.stopPropagation();row.disabled=true;
                 hint.textContent='Opening download options…';
                 try{
+                  if (typeof window !== 'undefined' && window.pywebview && window.pywebview.api) {
+                    try {
+                      if (typeof window.pywebview.api.download_current === 'function') {
+                        window.pywebview.api.download_current(item.url || window.location.href);
+                        chooser.remove(); position(); return;
+                      }
+                    } catch(e) {}
+                  }
                   const response=await send({action:'download',item:{...item,startNow:false}});
                   globalThis.awesomeMenuResult(response,{
                     accepted:()=>{chooser.remove();position();},

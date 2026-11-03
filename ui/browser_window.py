@@ -151,6 +151,12 @@ class BrowserBridge:
         if not target_url:
             return {"status": "error", "message": "No URL detected"}
 
+        # Always canonicalize YouTube watch URL to clean single video URL without mix/radio params
+        if "youtube.com" in target_url or "youtu.be" in target_url:
+            m = re.search(r"(?:v=|/shorts/|youtu\.be/)([a-zA-Z0-9_-]{11})", target_url)
+            if m:
+                target_url = f"https://www.youtube.com/watch?v={m.group(1)}"
+
         platform = detect_platform_from_url(target_url)
         cookie_file = get_cookie_file_path(platform)
         browser_cookie_file = get_cookie_file_path("browser")
@@ -165,8 +171,20 @@ class BrowserBridge:
             except Exception as e:
                 print(f"[DeepX Browser] Error extracting cookies: {e}", flush=True)
 
+        # Resolve effective IPC port
+        port = _active_ipc_port
+        if not port or port <= 0:
+            port_file = get_browser_data_dir() / "ipc_port.txt"
+            if port_file.is_file():
+                try:
+                    port = int(port_file.read_text(encoding="utf-8").strip())
+                except Exception:
+                    pass
+        candidate_ports = [port] if (port and port > 0) else [18932, 18933, 18934, 18935]
+
         # Notify main application via IPC
-        if _active_ipc_port:
+        delivered = False
+        for p in candidate_ports:
             try:
                 payload = {
                     "action": "download",
@@ -176,16 +194,18 @@ class BrowserBridge:
                     "title": (_active_browser_window.title if _active_browser_window else "") or "",
                 }
                 req = urllib.request.Request(
-                    f"http://127.0.0.1:{_active_ipc_port}/download",
+                    f"http://127.0.0.1:{p}/download",
                     data=json.dumps(payload).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                 )
                 with urllib.request.urlopen(req, timeout=3) as resp:
-                    pass
+                    if resp.status == 200:
+                        delivered = True
+                        break
             except Exception as ex:
-                print(f"[DeepX Browser] IPC send failed: {ex}", flush=True)
+                pass
 
-        return {"status": "ok", "url": target_url}
+        return {"status": "ok" if delivered else "queued", "url": target_url}
 
     def sync_cookies(self, url: str | None = None) -> dict:
         global _active_browser_window, _active_ipc_port
@@ -1456,12 +1476,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     } catch(e) {}
 
-    function queueDownload(targetUrl, mediaType = "video") {
+    function queueDownload(targetUrl, mediaType = "video", quality = "Best Available") {
         let cleanUrl = targetUrl || window.location.href;
         try {
             cleanUrl = new URL(cleanUrl, window.location.href).href;
         } catch(e) {}
-        console.log('[HQ Downloader Extension] Enqueuing download:', cleanUrl, mediaType);
+
+        // Sanitize YouTube mix / radio / channel watch URLs to clean single video URL
+        if (cleanUrl.includes('youtube.com') || cleanUrl.includes('youtu.be')) {
+            const ytMatch = cleanUrl.match(/(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+            if (ytMatch) {
+                cleanUrl = 'https://www.youtube.com/watch?v=' + ytMatch[1];
+            }
+        }
+        console.log('[HQ Downloader Extension] Enqueuing download:', cleanUrl, mediaType, quality);
+
+        // 0. Native In-App Browser Python Bridge (WebView2)
+        try {
+            if (typeof window !== 'undefined' && window.pywebview && window.pywebview.api) {
+                if (typeof window.pywebview.api.download_current === 'function') {
+                    window.pywebview.api.download_current(cleanUrl);
+                    showToast(mediaType === 'audio' ? '🎵 Audio Queued in HQ Downloader!' : '✓ Queued in HQ Downloader!');
+                    return;
+                }
+            }
+        } catch(e) {}
 
         // 1. Send to Extension Background Worker (Unrestricted Network Access)
         try {

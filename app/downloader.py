@@ -340,13 +340,15 @@ class DownloadManager:
             "progress_hooks": [progress_hook],
             "postprocessor_hooks": [postprocessor_hook],
             "postprocessors": postprocessors,
-            "buffersize": 1048576,
+            "buffersize": 2097152,
             "continuedl": True,
             "retries": 15,
             "fragment_retries": 15,
             "file_access_retries": 5,
             "extractor_retries": 2,
-            "socket_timeout": 30,
+            "socket_timeout": 60,
+            "concurrent_fragment_downloads": 8,
+            "http_chunk_size": 10485760,
         }
         if ffmpeg_path:
             options["ffmpeg_location"] = ffmpeg_path
@@ -387,7 +389,9 @@ class DownloadManager:
             options["referer"] = task.referer
 
         # Fast-Path: IDM-Style High-Performance Multi-Segment HTTP Engine for direct files
-        if is_direct_file_url(task.url, task.filename) or getattr(task, "http_headers", None):
+        from app.http_engine import KNOWN_VIDEO_PLATFORMS
+        is_social = any(domain in task.url.lower() for domain in KNOWN_VIDEO_PLATFORMS)
+        if not is_social and (is_direct_file_url(task.url, task.filename) or getattr(task, "http_headers", None)):
             try:
                 if download_segmented_http_task(task, self._notify, num_connections=10):
                     return

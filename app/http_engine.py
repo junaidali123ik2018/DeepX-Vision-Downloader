@@ -111,18 +111,31 @@ def build_request_headers(task: DownloadTask) -> dict[str, str]:
         "Accept": "*/*",
         "Accept-Encoding": "identity",
     }
-    # Forward headers captured by browser extension
     custom = getattr(task, "http_headers", None) or {}
     if isinstance(custom, dict):
         for k, v in custom.items():
             if isinstance(v, str) and v and not re.search(r"[\r\n]", v):
-                headers[k] = v
+                k_clean = k.strip()
+                k_lower = k_clean.lower()
+                if k_lower == "user-agent":
+                    headers.pop("User-Agent", None)
+                    headers["User-Agent"] = v
+                elif k_lower == "referer":
+                    headers.pop("Referer", None)
+                    headers["Referer"] = v
+                elif k_lower == "origin":
+                    headers.pop("Origin", None)
+                    headers["Origin"] = v
+                elif k_lower == "cookie":
+                    headers.pop("Cookie", None)
+                    headers["Cookie"] = v
+                else:
+                    headers[k_clean] = v
 
-    # Forward referer
     referer = getattr(task, "referer", "")
     if referer:
+        headers.pop("referer", None)
         headers["Referer"] = referer
-        headers["referer"] = referer
 
     return headers
 
@@ -177,6 +190,7 @@ def probe_url(
     except Exception:
         pass
 
+    open_stream_response = None
     # 2. If HEAD didn't yield total_size or status >= 400, try Range: bytes=0-0 GET probe
     if total_size is None or status_code >= 400 or status_code == 405:
         range_headers = dict(req_headers)
@@ -198,7 +212,11 @@ def probe_url(
                     total_size = int(cl)
             if res_headers.get("Accept-Ranges", "").lower() == "bytes" or status_code == 206:
                 accept_ranges = True
-            resp.close()
+            if status_code == 200 and not accept_ranges:
+                # Server sent full stream on GET; keep stream open so single-use movie download tokens are never lost!
+                open_stream_response = resp
+            else:
+                resp.close()
         except Exception as e:
             # If even Range GET fails, fall back to plain stream GET
             try:
@@ -209,7 +227,10 @@ def probe_url(
                 cl = res_headers.get("Content-Length")
                 if cl and cl.isdigit():
                     total_size = int(cl)
-                resp.close()
+                if status_code == 200:
+                    open_stream_response = resp
+                else:
+                    resp.close()
             except Exception as exc:
                 pass
 
@@ -275,6 +296,7 @@ def probe_url(
         "status_code": status_code,
         "final_url": final_url,
         "headers": dict(res_headers),
+        "open_response": open_stream_response,
     }
 
 
@@ -375,9 +397,10 @@ def download_segmented_http_task(
 
         target_url = probe["final_url"] or task.url
 
-        # If server does not support ranges or file is tiny (< 1MB), do single stream
+        # If server does not support ranges or file is tiny (< 1MB), do single stream using open response if ready
         if not accept_ranges or not total_size or total_size < 1048576:
-            return _download_single_stream(task, final_output, target_url, headers, cookies, notify_callback)
+            open_resp = probe.get("open_response")
+            return _download_single_stream(task, final_output, target_url, headers, cookies, notify_callback, existing_response=open_resp)
 
         # 3. Divide into segments (8 to 16 chunks)
         connections = min(num_connections, max(2, total_size // (512 * 1024)))
@@ -525,20 +548,15 @@ def _download_single_stream(
     headers: dict[str, str],
     cookies: dict[str, str],
     notify_callback: Callable[[DownloadTask], None],
+    existing_response: Optional[requests.Response] = None,
 ) -> bool:
     """Fallback single-stream downloader for non-ranged URLs."""
     downloaded = 0
     last_time = time.time()
     last_bytes = 0
 
-    with requests.get(
-        target_url,
-        headers=headers,
-        cookies=cookies,
-        stream=True,
-        timeout=30,
-        verify=False,
-    ) as response, open(final_output, "wb") as f:
+    def _stream_from(response):
+        nonlocal downloaded, last_time, last_bytes
         if response.status_code >= 400:
             raise RuntimeError(f"Server returned HTTP Error {response.status_code}")
         total = response.headers.get("Content-Length")
@@ -546,23 +564,38 @@ def _download_single_stream(
             with task.lock:
                 task.total = int(total)
 
-        for chunk in response.iter_content(chunk_size=65536):
-            if task.cancel_event.is_set() or task.pause_event.is_set():
-                break
-            if chunk:
-                f.write(chunk)
-                downloaded += len(chunk)
+        with open(final_output, "wb") as f:
+            for chunk in response.iter_content(chunk_size=65536):
+                if task.cancel_event.is_set() or task.pause_event.is_set():
+                    break
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
 
-                now = time.time()
-                dt = now - last_time
-                if dt >= 0.4:
-                    speed = (downloaded - last_bytes) / dt
-                    last_bytes = downloaded
-                    last_time = now
-                    with task.lock:
-                        task.downloaded = downloaded
-                        task.speed_bps = speed
-                    notify_callback(task)
+                    now = time.time()
+                    dt = now - last_time
+                    if dt >= 0.4:
+                        speed = (downloaded - last_bytes) / dt
+                        last_bytes = downloaded
+                        last_time = now
+                        with task.lock:
+                            task.downloaded = downloaded
+                            task.speed_bps = speed
+                        notify_callback(task)
+
+    if existing_response and existing_response.status_code < 400:
+        with existing_response as response:
+            _stream_from(response)
+    else:
+        with requests.get(
+            target_url,
+            headers=headers,
+            cookies=cookies,
+            stream=True,
+            timeout=30,
+            verify=False,
+        ) as response:
+            _stream_from(response)
 
     if task.cancel_event.is_set() or task.pause_event.is_set():
         with task.lock:
