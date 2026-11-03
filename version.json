@@ -1,14 +1,13 @@
 {
-  "version": "2.6.0",
-  "release_date": "2026-11-03",
-  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.6.0/DeepX_Vision_Downloader_Pro_Setup_v2.6.0.exe",
+  "version": "2.6.1",
+  "release_date": "2026-11-04",
+  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.6.1/DeepX_Vision_Downloader_Pro_Setup_v2.6.1.exe",
   "changelog": [
-    "2.6.0: Full integration of genuine Awesome Downloader extension rebranded to DeepX Vision",
-    "Preserved exact floating download bar (↓ Download this video ▾), styling, and quality chooser menu",
-    "Added automatic bridge.json sync pointing Chrome Native Messaging host directly to DeepX Vision active port",
-    "Configured dual-transport download handoff: direct localhost HTTP IPC + Native Messaging for 100% reliability",
-    "Fixed allowed_origins in Chrome.json for both unpacked extension IDs",
-    "Synchronized extension to all browser integration directories and recompiled installer"
+    "2.6.1: Dedicated 'Download File Info' modal on extension & browser download clicks",
+    "Auto-deploy unpacked 'DeepX Vision Extension' folder directly to user Desktop",
+    "Independent IPC bridge decoupled completely from external downloader software",
+    "Robust direct movie and CDN stream download fallback for netnaija and streaming sites",
+    "Editable title, quality selector, and custom save destination before downloading"
   ],
   "mandatory": false
 }

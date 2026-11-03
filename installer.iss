@@ -1,6 +1,6 @@
 ; Script generated for DeepX Vision Downloader
 #define MyAppName "DeepX Vision Downloader"
-#define MyAppVersion "2.6.0"
+#define MyAppVersion "2.6.1"
 #define MyAppPublisher "Junaid Ali"
 #define MyAppExeName "DeepX Vision Downloader.exe"
 
@@ -33,6 +33,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "dist\DeepX Vision Downloader\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "assets\app_icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "browser_extension\*"; DestDir: "{app}\browser_extension"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "browser_extension\*"; DestDir: "{userdesktop}\DeepX Vision Extension"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "browser_extension\*"; DestDir: "{localappdata}\DeepX Vision\browser_extension"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"

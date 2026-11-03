@@ -425,7 +425,11 @@ class DownloadManager:
                         with task.lock:
                             task.status = DownloadStatus.DOWNLOADING
                         self._notify(task)
-                        info = downloader.extract_info(task.url, download=False)
+                        try:
+                            info = downloader.extract_info(task.url, download=False)
+                        except Exception:
+                            # Direct movie or custom site where yt-dlp lacks extractor: proceed with provided title
+                            info = None
                     else:
                         info = downloader.extract_info(task.url, download=False)
                     if info:
@@ -520,6 +524,13 @@ class DownloadManager:
                 self._notify(task)
                 if is_custom_site_url(task.url) and info:
                     downloader.process_ie_result(info, download=True)
+                elif info is None and (is_direct_file_url(task.url, task.filename) or not is_social):
+                    # Direct media / movie link: bypass yt-dlp generic extractor
+                    dest_path = Path(task.output_path) if task.output_path else None
+                    if not download_segmented_http_task(task, self._notify, num_connections=8):
+                        from app.http_engine import _download_curl_cffi_fallback
+                        if not _download_curl_cffi_fallback(task, dest_path, getattr(task, "http_headers", {}), self._notify):
+                            downloader.download([task.url])
                 else:
                     downloader.download([task.url])
 

@@ -32,7 +32,7 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('requests')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
-hiddenimports += ['clr', 'cffi', 'proxy_tools', 'bottle']
+hiddenimports += ['clr', 'cffi', 'proxy_tools', 'bottle', 'ui.download_file_info_modal']
 datas += [('assets', 'assets'), ('browser_extension', 'browser_extension')]
 
 a = Analysis(

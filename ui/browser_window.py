@@ -1021,29 +1021,7 @@ class BrowserIPCServer:
         except Exception:
             pass
 
-        # Write ~/.awesome-downloader/bridge.json so native-host.exe routes directly to DeepX Vision
-        try:
-            bridge_dir = Path.home() / ".awesome-downloader"
-            bridge_dir.mkdir(parents=True, exist_ok=True)
-            (bridge_dir / "bridge.json").write_text(
-                json.dumps({"port": self.port, "token": "6f70ff30cc9f3c0ab399c5311438c5c49348b23b38dfd6487c0987e67817bfa5"}),
-                encoding="utf-8"
-            )
-        except Exception:
-            pass
-
-        # Ensure Chrome.json has allowed_origins for both extension IDs
-        try:
-            nm_chrome = Path.home() / ".awesome-downloader" / "NativeMessaging" / "Chrome.json"
-            if nm_chrome.is_file():
-                nm_data = json.loads(nm_chrome.read_text(encoding="utf-8"))
-                origins = set(nm_data.get("allowed_origins", []))
-                origins.add("chrome-extension://kglaajihgibldlggccblcninkbcloich/")
-                origins.add("chrome-extension://eenpclihobibjodlbhdblcaoigiammbb/")
-                nm_data["allowed_origins"] = sorted(list(origins))
-                nm_chrome.write_text(json.dumps(nm_data, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+        # DeepX Vision operates independently on localhost IPC ports
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
         print(f"[HQ Downloader IPC] Server listening on http://127.0.0.1:{self.port}", flush=True)

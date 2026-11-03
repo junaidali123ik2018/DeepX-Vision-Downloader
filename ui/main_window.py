@@ -177,6 +177,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             print(f"[DeepX Vision] IPC server start error: {e}", flush=True)
 
         self._build_shell()
+        self._sync_desktop_extension()
         self._restore_pending_queue()
 
         # Extension Page
@@ -218,6 +219,27 @@ class HQVideoDownloaderApp(ctk.CTk):
             except Exception:
                 pass
         return None
+
+    def _sync_desktop_extension(self) -> None:
+        """Automatically copies/updates the unpacked DeepX Vision Extension on user's Desktop."""
+        try:
+            import shutil
+            desktop_ext = Path.home() / "Desktop" / "DeepX Vision Extension"
+            src_ext = Path(__file__).resolve().parent.parent / "browser_extension"
+            if not src_ext.is_dir():
+                from app.utils import get_resource_path
+                src_ext = Path(get_resource_path("browser_extension"))
+            if src_ext.is_dir():
+                desktop_ext.mkdir(parents=True, exist_ok=True)
+                for item in src_ext.glob("*"):
+                    dest = desktop_ext / item.name
+                    if item.is_dir():
+                        shutil.copytree(item, dest, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(item, dest)
+                print(f"[DeepX Vision] Desktop extension synchronized at {desktop_ext}", flush=True)
+        except Exception as e:
+            print(f"[DeepX Vision] Desktop extension sync note: {e}", flush=True)
 
     def _build_shell(self) -> None:
         self.grid_columnconfigure(1, weight=1)
@@ -4368,39 +4390,6 @@ class HQVideoDownloaderApp(ctk.CTk):
         referer: str = "",
     ) -> None:
         def _do_enqueue():
-            if quality and quality != "Best Available":
-                try:
-                    self.quality_choice_var.set(quality)
-                except Exception:
-                    pass
-            if cookies_path and Path(cookies_path).is_file():
-                platform = detect_platform_from_url(url)
-                from ui.settings_dialog import is_platform_cookie_authenticated
-                if is_platform_cookie_authenticated(platform, cookies_path):
-                    self.settings.authorized_accounts[platform] = cookies_path
-                    self.store.save(self.settings)
-
-            if media_type == "audio":
-                try:
-                    self.format_choice_var.set("Audio (.mp3)")
-                except Exception:
-                    pass
-            elif media_type == "video":
-                try:
-                    if "Audio" in self.format_choice_var.get():
-                        self.format_choice_var.set("Video (Auto MP4/MKV)")
-                except Exception:
-                    pass
-
-            # Ensure clean URL and never open playlist modal when download requested from extension
-            clean_dl_url = url
-            if "youtube.com" in clean_dl_url or "youtu.be" in clean_dl_url:
-                import re
-                v_match = re.search(r"(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})", clean_dl_url)
-                if v_match:
-                    clean_dl_url = f"https://www.youtube.com/watch?v={v_match.group(1)}"
-            self._queue_urls([clean_dl_url], cookies_source=cookies_path, custom_title=title, quality_override=quality, http_headers=request_headers or {}, referer=referer, allow_playlist_dialog=False)
-            self.show_page("downloads")
             try:
                 self.deiconify()
                 self.lift()
@@ -4409,6 +4398,58 @@ class HQVideoDownloaderApp(ctk.CTk):
                 self.focus_force()
             except Exception:
                 pass
+
+            if cookies_path and Path(cookies_path).is_file():
+                platform = detect_platform_from_url(url)
+                from ui.settings_dialog import is_platform_cookie_authenticated
+                if is_platform_cookie_authenticated(platform, cookies_path):
+                    self.settings.authorized_accounts[platform] = cookies_path
+                    self.store.save(self.settings)
+
+            # Ensure clean URL without playlist mix params
+            clean_dl_url = url
+            if "youtube.com" in clean_dl_url or "youtu.be" in clean_dl_url:
+                import re
+                v_match = re.search(r"(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})", clean_dl_url)
+                if v_match:
+                    clean_dl_url = f"https://www.youtube.com/watch?v={v_match.group(1)}"
+
+            # Open Download File Info (Start Download) modal dialog
+            from ui.download_file_info_modal import DownloadFileInfoModal
+
+            def on_start_download(final_url: str, chosen_name: str, chosen_quality: str, chosen_dir: str):
+                if chosen_quality and "audio" in chosen_quality.lower():
+                    try:
+                        self.format_choice_var.set("Audio (.mp3)")
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        if "Audio" in self.format_choice_var.get():
+                            self.format_choice_var.set("Video (Auto MP4/MKV)")
+                    except Exception:
+                        pass
+
+                self._queue_urls(
+                    [final_url],
+                    cookies_source=cookies_path,
+                    custom_title=chosen_name,
+                    quality_override=chosen_quality,
+                    destination_override=chosen_dir,
+                    http_headers=request_headers or {},
+                    referer=referer,
+                    allow_playlist_dialog=False,
+                )
+                self.show_page("downloads")
+
+            DownloadFileInfoModal(
+                self,
+                url=clean_dl_url,
+                initial_title=title,
+                initial_quality=quality or "Best Available",
+                initial_directory=str(self.settings.resolved_download_folder()),
+                on_start=on_start_download,
+            )
 
         self.after(0, _do_enqueue)
 
@@ -5671,7 +5712,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             done_event.wait()
             return result_holder[0]
 
-    def _queue_urls(self, urls: list[str], cookies_source: str = "", custom_title: str = "", quality_override: str = "", http_headers: dict | None = None, referer: str = "", allow_playlist_dialog: bool = True) -> bool:
+    def _queue_urls(self, urls: list[str], cookies_source: str = "", custom_title: str = "", quality_override: str = "", destination_override: str = "", http_headers: dict | None = None, referer: str = "", allow_playlist_dialog: bool = True) -> bool:
         if not self._check_device_not_banned():
             return False
 
@@ -5698,7 +5739,7 @@ class HQVideoDownloaderApp(ctk.CTk):
         speed_limit = parse_speed_limit(self.settings.default_speed_limit)
         format_choice = self.format_choice_var.get()
         selected_quality = "Image / Photo" if "Image" in format_choice else self.quality_var.get()
-        base_dest = str(self.settings.resolved_download_folder())
+        base_dest = destination_override if (destination_override and os.path.isdir(destination_override)) else str(self.settings.resolved_download_folder())
 
         # Check for duplicates in history
         items_to_download: list[tuple[str, bool]] = []

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "DeepX Vision Downloader Integration",
-  "version": "2.6.0",
-  "description": "Send links and detected direct video downloads to DeepX Vision Downloader for Windows.",
+  "name": "DeepX Vision Extension",
+  "version": "2.6.1",
+  "description": "Download videos directly with DeepX Vision Downloader for Windows.",
   "permissions": [
     "nativeMessaging",
     "storage",
@@ -25,7 +25,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "DeepX Vision Downloader",
+    "default_title": "DeepX Vision Extension",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png"
