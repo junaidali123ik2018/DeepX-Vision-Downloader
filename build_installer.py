@@ -44,7 +44,8 @@ def build():
     print(f"Found Inno Setup compiler: {iscc_path}")
     res_inno = subprocess.run([iscc_path, "installer.iss"])
     if res_inno.returncode == 0:
-        setup_file = Path("dist_installer/DeepX_Vision_Downloader_Pro_Setup_v2.5.1.exe").resolve()
+        setup_files = sorted(Path("dist_installer").glob("*.exe"), key=lambda f: f.stat().st_mtime, reverse=True)
+        setup_file = setup_files[0] if setup_files else Path("dist_installer").resolve()
         size_mb = setup_file.stat().st_size / (1024 * 1024) if setup_file.is_file() else 0
         print("\n==================================================")
         print(" [SUCCESS] Windows Setup Installer Created!")

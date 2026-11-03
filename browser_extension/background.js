@@ -1,18 +1,19 @@
-/* Downloads require extension UI messages; page player metadata is bounded and sanitized. */
+/* DeepX Vision Downloader Browser Extension Service Worker */
 if(typeof importScripts==='function') importScripts('hls.js','youtube-media.js');
 const api = globalThis.browser || chrome;
 const HOST = 'com.awesome.downloader';
 const CACHE_KEY = 'mediaByTab';
 const SABR_KEY = 'sabrByTab';
 let serial = Promise.resolve();
-// Credentials stay in worker memory and are used only for the selected observed URL.
 const requestContext = new Map();
 const youtubePlayers=new Map(), youtubeObserved=new Map(), youtubeSabrObserved=new Map(), youtubeSabrSeed=new Map();
+
 function rememberSabrCapture(tabId,seed){
   youtubeSabrObserved.set(tabId,seed);
   if(youtubeSabrObserved.size>50)youtubeSabrObserved.delete(youtubeSabrObserved.keys().next().value);
   updateSession(SABR_KEY,map=>{map[tabId]={url:seed.url,requestBody:seed.requestBody};}).catch(()=>{});
 }
+
 async function sabrCapture(tabId){
   const live=youtubeSabrObserved.get(tabId);
   if(live)return live;
@@ -24,12 +25,15 @@ async function sabrCapture(tabId){
     }
   }catch{}
 }
+
 function clearSabrCapture(tabId){
   youtubeSabrObserved.delete(tabId);
   for(const [id,seed] of youtubeSabrSeed)if(seed.tabId===tabId)youtubeSabrSeed.delete(id);
   updateSession(SABR_KEY,map=>{delete map[tabId];}).catch(()=>{});
 }
+
 function bytesBase64(bytes){let binary='';const view=new Uint8Array(bytes);for(let i=0;i<view.length;i+=8192)binary+=String.fromCharCode(...view.subarray(i,i+8192));return btoa(binary);}
+
 api.webRequest.onBeforeRequest?.addListener(details=>{
   const url=globalThis.youtubeMedia?.sabrUrl(details.url), raw=details.requestBody?.raw;
   if(!url||details.tabId<0||!Array.isArray(raw)||!raw.length)return;
@@ -38,6 +42,7 @@ api.webRequest.onBeforeRequest?.addListener(details=>{
   youtubeSabrSeed.set(details.requestId,{tabId:details.tabId,url,requestBody:bytesBase64(bytes)});
   if(youtubeSabrSeed.size>100)youtubeSabrSeed.delete(youtubeSabrSeed.keys().next().value);
 },{urls:['https://*.googlevideo.com/videoplayback*','https://googlevideo.com/videoplayback*']},['requestBody']);
+
 function rememberRequest(details) {
   if(details.tabId<0 || !httpUrl(details.url))return;
   let tab=requestContext.get(details.tabId);
@@ -49,13 +54,16 @@ function rememberRequest(details) {
   }
   tab.set(details.url,headers);if(tab.size>100)tab.delete(tab.keys().next().value);
 }
-// Chromium (which now also defines `browser`) withholds Cookie and Referer unless extraHeaders is requested; Firefox has no such option.
+
 api.webRequest.onBeforeSendHeaders?.addListener(rememberRequest,{urls:['http://*/*','https://*/*']},['requestHeaders',...(api.webRequest.OnBeforeSendHeadersOptions?.EXTRA_HEADERS?['extraHeaders']:[])]);
+
 function httpUrl(value) {
   try { const u = new URL(value); return ['http:', 'https:'].includes(u.protocol) && !u.username && !u.password ? u.href : null; } catch { return null; }
 }
+
 function unsupported(url, mime = '') { return /\.mpd(?:[?#]|$)/i.test(url) || /dash\+xml/i.test(mime); }
 function isFragment(url) { return /\.(m4s|ts|aac)(?:[?#]|$)/i.test(url) || /\/init[^/]*\.mp4(?:[?#]|$)/i.test(url); }
+
 const hlsSeen=new Map(); let hlsActive=0;
 async function discoverHls(tabId,url) {
   if(tabId<0 || hlsActive>=8)return;
@@ -74,8 +82,7 @@ async function discoverHls(tabId,url) {
   } catch {} finally {clearTimeout(timer);hlsActive--;}
 }
 
-// ── DeepX Vision Downloader Bridge ──────────────────────────────────────────
-// Try DeepX HTTP IPC first (ports 18932-18935), fallback to native messaging.
+// ── Direct DeepX Vision IPC (ports 18932-18935) ─────────────────────────────
 const DEEPX_PORTS = [18932, 18933, 18934, 18935];
 async function sendToDeepX(payload) {
   for (const port of DEEPX_PORTS) {
@@ -93,8 +100,9 @@ async function sendToDeepX(payload) {
 }
 
 function nativeSend(payload) {
-  // Try DeepX Vision Downloader HTTP IPC first, then fall back to native messaging
+  // First attempt: Direct HTTP IPC to DeepX Vision running app
   return sendToDeepX(payload).catch(() => {
+    // Second attempt: Native messaging host
     return new Promise((resolve, reject) => {
       if (!globalThis.browser) {
         chrome.runtime.sendNativeMessage(HOST, payload, result => {
@@ -111,6 +119,7 @@ function nativeSend(payload) {
     });
   });
 }
+
 async function enqueue(item, tabId) {
   let sabr;
   if(item.sabrSelection){
@@ -123,8 +132,6 @@ async function enqueue(item, tabId) {
     if(!captured)throw new Error('Play this YouTube video briefly so its streaming session can be captured, then try again.');
     const serverAbrStreamingUrl=captured.url;
     if(!audio||videoItag!==undefined&&!video||!globalThis.youtubeMedia.sabrUrl(serverAbrStreamingUrl)||!player.ustreamerConfig)throw new Error('The captured YouTube SABR session is incomplete. Play the video briefly and reopen the menu.');
-    // Native messaging is limited to 1 MiB. The desktop only needs the two
-    // selected tracks, not every format advertised by YouTube's player.
     sabr={videoId:player.videoId,serverAbrStreamingUrl,videoPlaybackUstreamerConfig:player.ustreamerConfig,clientInfo:{clientName:player.clientName,clientVersion:player.clientVersion},formats:[video,audio].filter(Boolean),videoItag,audioItag,requestBody:captured.requestBody};
   }
   const url = httpUrl(sabr?.serverAbrStreamingUrl||item.url);
@@ -133,12 +140,12 @@ async function enqueue(item, tabId) {
   const requestHeaders=requestContext.get(tabId)?.get(url);
   return nativeSend({action: 'download', url, youtubeFormat:item.youtubeFormat, sabr, startNow:item.startNow===true, audioUrl:httpUrl(item.audioUrl)||undefined, outputFormat:item.outputFormat, filename: item.filename || item.title, referer: httpUrl(requestHeaders?.referer || item.referer) || undefined,requestHeaders});
 }
+
 function updateSession(key,change) {
   const next = serial.then(async () => {
     const data = await api.storage.session.get(key);
     const map = data[key] || {};
     await change(map);
-    // Bound total tracked tabs as well as each tab's results.
     const keys = Object.keys(map);
     keys.slice(0, Math.max(0, keys.length - 50)).forEach(entry => delete map[entry]);
     await api.storage.session.set({[key]: map});
@@ -147,6 +154,7 @@ function updateSession(key,change) {
   return next;
 }
 const updateCache=change=>updateSession(CACHE_KEY,change);
+
 async function remember(tabId, items) {
   if (tabId < 0) return;
   await updateCache(map => {
@@ -165,6 +173,7 @@ async function remember(tabId, items) {
     map[tabId] = prior.slice(-100);
   });
 }
+
 api.webRequest.onHeadersReceived.addListener(details => {
   const mime = details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-type')?.value || '';
   const captured=globalThis.youtubeMedia?.mediaUrl(details.url);
@@ -185,8 +194,10 @@ api.webRequest.onHeadersReceived.addListener(details => {
   }
   if(/\.m3u8(?:[?#]|$)/i.test(details.url)||/mpegurl/i.test(mime))discoverHls(details.tabId,details.url);
 }, {urls: ['http://*/*', 'https://*/*']}, ['responseHeaders']);
+
 api.tabs.onRemoved.addListener(tabId => {youtubePlayers.delete(tabId);youtubeObserved.delete(tabId);clearSabrCapture(tabId);requestContext.delete(tabId);hlsSeen.delete(tabId);updateCache(map => { delete map[tabId]; }).catch(() => {});});
 api.tabs.onUpdated.addListener((tabId, change) => { if (change.status === 'loading') {youtubePlayers.delete(tabId);youtubeObserved.delete(tabId);clearSabrCapture(tabId);requestContext.delete(tabId);hlsSeen.delete(tabId);updateCache(map => { delete map[tabId]; }).catch(() => {});} });
+
 api.runtime.onInstalled.addListener(async () => {
   try {
     await api.contextMenus.removeAll();
@@ -194,6 +205,7 @@ api.runtime.onInstalled.addListener(async () => {
     api.contextMenus.create({id: 'deepx-page', title: 'Find downloadable links on this page', contexts: ['page']});
   } catch (error) { await api.storage.local.set({lastError: error.message}); }
 });
+
 api.contextMenus.onClicked.addListener(async (info, tab) => {
   try {
     if (info.menuItemId === 'deepx-page') { await api.tabs.sendMessage(tab.id, {action: 'collectLinks'}); await api.action.setBadgeText({tabId: tab.id, text: 'LINK'}); return; }
@@ -204,6 +216,7 @@ api.contextMenus.onClicked.addListener(async (info, tab) => {
     if (tab?.id) await api.action.setBadgeText({tabId: tab.id, text: '!'});
   }
 });
+
 api.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== api.runtime.id) return false;
   const task = async () => {
@@ -222,14 +235,8 @@ api.runtime.onMessage.addListener((message, sender, respond) => {
     }
     if (message.action === 'remember' && sender.tab) { await remember(sender.tab.id, message.items || []); return {ok: true}; }
     if (message.action === 'download') {
-      const item = message.item || {
-        url: message.url,
-        filename: message.title || message.filename,
-        outputFormat: message.media_type === 'audio' ? 'mp3' : undefined,
-        referer: message.referer || message.url,
-      };
-      const tabId = sender.tab?.id ?? message.tabId;
-      return enqueue({...item, referer: sender.tab?.url || item.referer}, tabId);
+      const tabId=sender.tab?.id ?? message.tabId;
+      return enqueue({...message.item, referer: sender.tab?.url || message.item?.referer},tabId);
     }
     if (message.action === 'list' && !sender.tab) {
       await serial;
@@ -251,9 +258,11 @@ api.runtime.onMessage.addListener((message, sender, respond) => {
           items=items.filter(item=>!item.sabrSelection);
         }
         if(!items.length){
-          items=[
-            {url:`https://www.youtube.com/watch?v=${id}`,title:sender.tab?.title||'YouTube Video',quality:'Best Available',format:'MP4',audioState:'Video with audio',youtubeFormat:'Best Available'},
-            {url:`https://www.youtube.com/watch?v=${id}`,title:sender.tab?.title||'YouTube Video',quality:'Audio Only',format:'MP3',audioState:'Audio track',outputFormat:'mp3',youtubeFormat:'audio:mp3'}
+          // Instant fallback so the download button ALWAYS provides valid download choices
+          const cleanTitle = player.title || 'YouTube Video';
+          items = [
+            { url: `https://www.youtube.com/watch?v=${id}`, provider: 'youtube', format: 'MP4', outputFormat: 'mp4', quality: 'Best Available', audioState: 'Video + audio', title: cleanTitle, filename: `${cleanTitle}.mp4` },
+            { url: `https://www.youtube.com/watch?v=${id}`, provider: 'youtube', format: 'MP3', outputFormat: 'mp3', quality: 'Audio Only', audioState: 'Audio only', title: cleanTitle, filename: `${cleanTitle}.mp3` }
           ];
         }
         return {ok:true,items};
@@ -267,6 +276,7 @@ api.runtime.onMessage.addListener((message, sender, respond) => {
   task().then(respond, error => respond({ok: false, error: error.message}));
   return true;
 });
+
 const pendingHandoffs=new Map();
 function sharedHandoff(url,item){
   const key=JSON.stringify([item.tabId,item.referrer||'',url]);
@@ -274,17 +284,17 @@ function sharedHandoff(url,item){
   pending=enqueue({url,filename:item.filename?.split(/[\\/]/).pop(),referer:item.referrer},item.tabId).finally(()=>pendingHandoffs.delete(key));
   pendingHandoffs.set(key,pending);pending.catch(()=>{});return pending;
 }
+
 api.downloads.onCreated.addListener(async item => {
   const url=item.finalUrl||item.url;
   let paused=false,accepted=false;
   try {
     if (!httpUrl(url) || item.state==='complete') return;
-    // IDM's observed ownership model: pause during handoff, resume on failure.
     await api.downloads.pause(item.id); paused=true;
     await sharedHandoff(url,item);accepted=true;
     await api.downloads.cancel(item.id);
   } catch (e) {
     if(paused&&!accepted)await api.downloads.resume(item.id).catch(()=>{});
-    await api.storage.local.set({lastError:accepted?`The browser download could not be canceled; Awesome Downloader continues the transfer: ${e.message}`:`Browser download was kept: ${e.message}`});
+    await api.storage.local.set({lastError:accepted?`Browser download could not be canceled; DeepX Vision continues the transfer: ${e.message}`:`Browser download kept: ${e.message}`});
   }
 });

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "DeepX Vision Downloader",
-  "version": "0.1.1",
-  "description": "Send video links and detected downloads to DeepX Vision Downloader for Windows.",
+  "name": "DeepX Vision Downloader Integration",
+  "version": "2.6.0",
+  "description": "Send links and detected direct video downloads to DeepX Vision Downloader for Windows.",
   "permissions": [
     "nativeMessaging",
     "storage",
@@ -11,8 +11,6 @@
     "downloads"
   ],
   "host_permissions": [
-    "http://localhost/*",
-    "http://127.0.0.1/*",
     "http://*/*",
     "https://*/*"
   ],

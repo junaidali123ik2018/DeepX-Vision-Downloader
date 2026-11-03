@@ -7,6 +7,7 @@
   const listeners = new AbortController();
   const resizeObserver = new ResizeObserver(() => position());
   const direct = value => { try { const u = new URL(value, location.href); return /^https?:$/.test(u.protocol) ? u.href : null; } catch { return null; } };
+
   function shutdown() {
     if(stopped)return;
     stopped=true;
@@ -18,18 +19,19 @@
     records.clear();
     try{api.runtime.onMessage.removeListener(onMessage);}catch{}
   }
+
   function connected() {
     if(stopped)return false;
     try{if(api.runtime.id)return true;}catch{}
     shutdown();return false;
   }
-  // sendMessage can throw synchronously after an extension reload, before a
-  // caller's .catch exists. Always expose a promise and retire the stale script.
+
   async function send(message) {
     if(!connected())throw new Error('The extension was reloaded. Refresh this page to reconnect.');
     try{return await api.runtime.sendMessage(message);}
     catch(error){if(/extension context invalidated/i.test(error?.message||''))shutdown();throw error;}
   }
+
   function scan() {
     pending = false;
     if(!connected())return;
@@ -45,6 +47,7 @@
       const record = {video, host, shadow, dismissed:false}; records.add(record);
       resizeObserver.observe(video);
       document.documentElement.appendChild(host);
+
       const report = () => {
         const urls = [video.currentSrc, video.src, ...Array.from(video.querySelectorAll('source'), source => source.src)].map(direct).filter(Boolean);
         if (urls.length) send({action:'remember', items: urls.map(url => ({url, title:document.title}))}).catch(() => {});
@@ -53,12 +56,14 @@
       record.sourceObserver=new MutationObserver(report);
       record.sourceObserver.observe(video,{attributes:true,attributeFilter:['src'],subtree:true,childList:true});
       report();if(stopped)return;
+
       dismiss.addEventListener('click',event=>{
         event.preventDefault();event.stopPropagation();
         record.dismissed=true;
         shadow.querySelector('.chooser')?.remove();
         host.style.display='none';
       });
+
       button.addEventListener('click', async event => {
         event.preventDefault(); event.stopPropagation();
         const url = direct(video.currentSrc || video.src || video.querySelector('source')?.src);
@@ -78,12 +83,12 @@
             if (!candidates.length) {
               if (youtube) {
                 const vId = new URLSearchParams(location.search).get('v') || /^\/shorts\/([\w-]{11})/.exec(location.pathname)?.[1];
-                if (vId) candidates.push({url:`https://www.youtube.com/watch?v=${vId}`,title:document.title||'YouTube Video',quality:'Best Available',format:'MP4',audioState:'Video with audio'});
+                if (vId) candidates.push({url:`https://www.youtube.com/watch?v=${vId}`,title:document.title||'YouTube Video',quality:'Best Available',format:'MP4',audioState:'Video + audio'});
               } else if (url || video.currentSrc) {
-                candidates.push({url:url||video.currentSrc,title:document.title||'Video',quality:'Best Available',format:'MP4',audioState:'Video with audio'});
+                candidates.push({url:url||video.currentSrc,title:document.title||'Video',quality:'Best Available',format:'MP4',audioState:'Video + audio'});
               }
             }
-            if (!candidates.length) { hint.textContent=result.notice || 'No playable media detected. Play the video and try again.'; return; }
+            if (!candidates.length) { hint.textContent=result.notice || 'No direct media links detected. Play the video and try again.'; return; }
             let choices=globalThis.mediaChoices(candidates,{url,poster:video.poster});
             if(!choices.length) choices=candidates;
             choices.forEach((item,index)=>{
@@ -94,7 +99,7 @@
               row.textContent = `${index+1}. ${item.quality || format} · ${format} · ${item.audioState}${item.bitrate ? ' · '+Math.round(item.bitrate/1000)+' kbps' : ''} — ${title}`;
               row.onclick=async event=>{
                 event.preventDefault();event.stopPropagation();row.disabled=true;
-                hint.textContent='Opening download options…';
+                hint.textContent='Sending to DeepX Vision…';
                 try{
                   if (typeof window !== 'undefined' && window.pywebview && window.pywebview.api) {
                     try {
@@ -113,14 +118,21 @@
                 row.disabled=!!item.unsupported;
               };chooser.append(row);
             }); position();
-          } catch(error) {hint.textContent=error.message;}
+          } catch(error) {hint.textContent=friendlyError(error.message);}
           return;
         }
       });
     }
     position();
   }
-  function friendlyError(message) { return /native messaging host not found/i.test(message || '') ? 'Chrome cannot find the desktop connector. Open Awesome Downloader → Browser Integration → Refresh browsers, then reload this extension and page. Details: '+message : message; }
+
+  function friendlyError(message) {
+    if (/native messaging host not found/i.test(message || '')) {
+      return 'DeepX Vision connector not found. Make sure DeepX Vision Downloader is running.';
+    }
+    return message;
+  }
+
   function closeChoosers(except) {
     for(const record of records){
       if(record===except)continue;
@@ -128,6 +140,7 @@
     }
     position();
   }
+
   function position() {
     if(!connected())return;
     for (const record of records) {
@@ -153,6 +166,7 @@
       }
     }
   }
+
   mutationObserver=new MutationObserver(() => { if (!stopped && !pending) { pending = true; scanFrame=requestAnimationFrame(scan); } });
   mutationObserver.observe(document.documentElement, {subtree:true, childList:true});
   document.addEventListener('pointerdown',event=>{
@@ -161,13 +175,14 @@
     if(!inside)closeChoosers();
   },{capture:true,signal:listeners.signal});
   document.addEventListener('keydown',event=>{if(event.key==='Escape')closeChoosers();},{capture:true,signal:listeners.signal});
+
   function onScroll(event) {
-    // Scrolling the quality list itself must remain usable.
     if(event?.composedPath?.().some(node=>[...records].some(record=>node===record.host)))return;
     scrolling=true;closeChoosers();clearTimeout(scrollTimer);
     scrollTimer=setTimeout(()=>{scrolling=false;position();},140);
   }
   addEventListener('scroll', onScroll, {capture:true,signal:listeners.signal}); addEventListener('resize', position, {signal:listeners.signal}); document.addEventListener('fullscreenchange',position,{signal:listeners.signal});
+
   function onMessage(message, sender, respond) {
     if (!connected() || sender.id !== api.runtime.id || message.action !== 'collectLinks') return;
     const items = Array.from(document.querySelectorAll('a[href]')).slice(0, 1000).map(a => ({url:direct(a.href), title:a.textContent.trim()})).filter(item => item.url);

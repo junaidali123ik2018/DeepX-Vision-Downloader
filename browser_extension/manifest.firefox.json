@@ -1,18 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "DeepX Vision Downloader",
-  "version": "0.1.1",
+  "name": "DeepX Vision Downloader Integration",
+  "version": "2.6.0",
   "description": "Send links and detected direct video downloads to DeepX Vision Downloader for Windows.",
   "permissions": [
     "nativeMessaging",
     "storage",
     "contextMenus",
-    "webRequest",
-    "downloads"
+    "webRequest"
   ],
   "host_permissions": [
-    "http://localhost/*",
-    "http://127.0.0.1/*",
     "http://*/*",
     "https://*/*"
   ],
@@ -37,17 +34,6 @@
       "32": "icons/icon32.png"
     }
   },
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "awesome-downloader@morluto.local",
-      "strict_min_version": "128.0",
-      "data_collection_permissions": {
-        "required": [
-          "none"
-        ]
-      }
-    }
-  },
   "content_scripts": [
     {
       "matches": [
@@ -59,7 +45,6 @@
         "youtube-media.js",
         "youtube-page.js"
       ],
-      "world": "MAIN",
       "run_at": "document_start"
     },
     {
@@ -86,5 +71,10 @@
       "all_frames": true,
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "integration@deepx-vision.com"
+    }
+  }
 }
