@@ -1,16 +1,14 @@
 {
-  "version": "2.5.3",
-  "release_date": "2026-10-20",
-  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.5.3/DeepX_Vision_Downloader_Pro_Setup_v2.5.3.exe",
+  "version": "2.6.2",
+  "release_date": "2026-11-05",
+  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.6.2/DeepX_Vision_Downloader_Pro_Setup_v2.6.2.exe",
   "changelog": [
-    "Complete Modern Pro UI Overhaul with Midnight Obsidian & Electric Azure high-contrast design",
-    "Enhanced sidebar navigation with vibrant active tab pill highlights and muted inactive states",
-    "Polished Dashboard, Media Converter, and Downloads layout with refined card borders and uniform padding",
-    "Dynamic theme harmonization across Settings, Dialogs, and Modals with smooth Light and Dark mode contrast",
-    "Windows File Properties Details support: Converted and downloaded videos accurately display resolution and bitrates in Windows Explorer",
-    "Browser Extension Companion for Chrome, Edge, and Brave with 1-click video card download buttons",
-    "Single-Instance protection: Automatically restores and focuses running window when reopened",
-    "Persistent download queue: Interrupted downloads safely recover and resume after power outage or reboot"
+    "2.6.2: Complete support for 10-Hour+ long videos without timeouts or 403 blocks",
+    "16 concurrent fragment connections (IDM-grade turbo speed) for DASH, HLS, and direct streams",
+    "Robust anti-bot movie downloads with Chrome TLS impersonation (NetNaija & direct CDN links)",
+    "Infinite retry resilience: 100 fragment retries, 50 general retries, and chunk-level auto-resume",
+    "Stream-copy zero-reencode FFmpeg muxing preventing CPU freezes on multi-gigabyte videos",
+    "Cleaned software UI by removing internal extension tab for pure high-speed downloading"
   ],
   "mandatory": false
 }
