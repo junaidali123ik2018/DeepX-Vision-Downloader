@@ -5,6 +5,7 @@
   "changelog": [
     "2.6.2: Complete support for 10-Hour+ long videos without timeouts or 403 blocks",
     "16 concurrent fragment connections (IDM-grade turbo speed) for DASH, HLS, and direct streams",
+    "Robust anti-bot movie downloads with Chrome TLS impersonation (NetNaija & direct CDN links)",
     "Infinite retry resilience: 100 fragment retries, 50 general retries, and chunk-level auto-resume",
     "Stream-copy zero-reencode FFmpeg muxing preventing CPU freezes on multi-gigabyte videos",
     "Cleaned software UI by removing internal extension tab for pure high-speed downloading"
