@@ -1,13 +1,14 @@
 {
-  "version": "2.6.3",
+  "version": "2.6.4",
   "release_date": "2026-11-05",
-  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.6.3/DeepX_Vision_Downloader_Pro_Setup_v2.6.3.exe",
+  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.6.4/DeepX_Vision_Downloader_Pro_Setup_v2.6.4.exe",
   "changelog": [
-    "2.6.3: Pure Maximum Original Quality preservation (true 8K, 4K, 2K, 1080p60 without quality drop)",
-    "Upgraded yt-dlp to 2026.10.26, curl_cffi to 0.17.0, urllib3 to 2.8.0, and certifi to 2026.10.23",
-    "Enhanced format sorting prioritizing highest resolution, framerate, uncompressed file size, and 320kbps audio",
-    "Stream-copy zero-loss FFmpeg muxing without quality degradation or CPU freeze",
-    "10-Hour+ long video stability and NetNaija/movie direct stream anti-bot bypass"
+    "2.6.4: Built-in 1-Click In-App Auto Update & Direct Browser Fallback",
+    "Added direct 'Update' button on Topbar and Sidebar for instant update check",
+    "Added direct clickable GitHub Releases button/link to download installer manually in Chrome",
+    "Automatic Chrome/Browser fallback if in-app update download is blocked or interrupted",
+    "Preserved true 8K/4K/1080p uncompressed original video quality and 320kbps studio sound",
+    "Core engines upgraded: yt-dlp 2026.10.26, curl_cffi 0.17.0, urllib3 2.8.0, certifi 2026.10.23, FFmpeg stream-copy"
   ],
   "mandatory": false
 }
