@@ -180,7 +180,7 @@ class DownloadManager:
                 postprocessors.append({
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": target_codec,
-                    "preferredquality": "192",
+                    "preferredquality": "320",
                 })
         elif "8K" in q_upper or "4320" in q_upper:
             # Download best available; post-download will upscale if needed
@@ -329,7 +329,7 @@ class DownloadManager:
 
         options = {
             "format": format_str,
-            "format_sort": ["res", "fps", "br"],
+            "format_sort": ["res", "fps", "size", "br", "asr"],
             "outtmpl": out_template,
             "windowsfilenames": True,
             "noplaylist": True,
@@ -351,11 +351,8 @@ class DownloadManager:
             "concurrent_fragment_downloads": 16,  # 16 parallel threads (IDM-grade)
             "http_chunk_size": 10485760,
             "throttled_rate": "100K",
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["android", "ios", "web"],
-                    "player_skip": ["webpage", "configs"],
-                }
+            "postprocessor_args": {
+                "Merger": ["-c:v", "copy", "-c:a", "copy"]
             },
         }
         if ffmpeg_path:

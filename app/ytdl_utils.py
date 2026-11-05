@@ -117,9 +117,7 @@ def apply_ytdl_robust_options(options: dict) -> dict:
     if "http_headers" not in options:
         options["http_headers"] = get_default_browser_headers()
 
-    target = get_impersonate_target()
-    if target and "impersonate" not in options:
-        options["impersonate"] = target
+    # Keep native networking for YouTube to avoid TLS error 56, use curl_cffi in specialized handlers
 
     # 1. 10-Hour & Long Video Turbo Settings (IDM-grade 16 concurrency & infinite resilience)
     options["retries"] = 50
@@ -134,10 +132,7 @@ def apply_ytdl_robust_options(options: dict) -> dict:
     options["concurrent_fragment_downloads"] = 16  # 16 parallel fragment downloads (IDM speed)
     options["throttled_rate"] = "100K"  # Auto-reconnect if YouTube throttles speed
 
-    # 2. Player client hierarchy for unthrottled downloads without PO token blocks
-    yt_args = options.setdefault("extractor_args", {}).setdefault("youtube", {})
-    yt_args.setdefault("player_client", ["android", "ios", "web"])
-    yt_args.setdefault("player_skip", ["webpage", "configs"])
+    # 2. Maximum Quality Preservation: Allow full client format discovery for 8K/4K/1440p/1080p60
 
     # 3. Stream Copy FFmpeg muxing (Instant merge without re-encoding)
     options.setdefault("postprocessor_args", {})
