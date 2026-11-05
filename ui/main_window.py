@@ -390,7 +390,21 @@ class HQVideoDownloaderApp(ctk.CTk):
             text_color="#FFFFFF",
             font=ctk.CTkFont(size=12, weight="bold"),
             command=self._open_settings_dialog,
-        ).pack(side="bottom", fill="x", padx=10, pady=(6, 8))
+        ).pack(side="bottom", fill="x", padx=10, pady=(2, 8))
+
+        btn_side_update = ctk.CTkButton(
+            self.sidebar,
+            text="🔄  Check Updates",
+            anchor="w",
+            height=36,
+            corner_radius=8,
+            fg_color="transparent",
+            hover_color="#0284C7",
+            text_color="#38BDF8",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=lambda: self._check_for_updates(silent_if_latest=False),
+        )
+        btn_side_update.pack(side="bottom", fill="x", padx=10, pady=(2, 2))
 
         # Pro Tip Card in sidebar
         protip_card = ctk.CTkFrame(
@@ -479,6 +493,20 @@ class HQVideoDownloaderApp(ctk.CTk):
             font=ctk.CTkFont(size=12, weight="bold"),
             command=self._open_settings_dialog,
         ).pack(side="right", padx=4, pady=13)
+
+        self.btn_top_update = ctk.CTkButton(
+            self.topbar,
+            text="⚡ Update",
+            width=88,
+            height=34,
+            corner_radius=6,
+            fg_color="#0284C7",
+            hover_color="#0369A1",
+            text_color="#FFFFFF",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=lambda: self._check_for_updates(silent_if_latest=False),
+        )
+        self.btn_top_update.pack(side="right", padx=4, pady=13)
 
         ctk.CTkButton(
             self.topbar,
@@ -4903,18 +4931,38 @@ class HQVideoDownloaderApp(ctk.CTk):
                         if has_up and manifest:
                             UpdateModal(self, manifest)
                         elif not silent_if_latest:
-                            if manifest and messagebox.askyesno("DeepX Vision Downloader", f"{msg}\n\nDo you want to re-download and auto-install/replace version v{manifest.version} now?"):
-                                UpdateModal(self, manifest)
+                            import webbrowser
+                            if manifest:
+                                ans = messagebox.askyesnocancel(
+                                    "DeepX Vision Downloader - Update Check",
+                                    f"{msg}\n\n"
+                                    f"• Click [Yes] to auto-reinstall/repair version v{manifest.version}\n"
+                                    f"• Click [No] to open GitHub Releases page in your web browser (Chrome)\n"
+                                    f"• Click [Cancel] to close",
+                                )
+                                if ans is True:
+                                    UpdateModal(self, manifest)
+                                elif ans is False:
+                                    webbrowser.open("https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases")
                             else:
-                                messagebox.showinfo("DeepX Vision Downloader", msg)
-                    except Exception:
-                        pass
+                                if messagebox.askyesno(
+                                    "DeepX Vision Downloader",
+                                    f"{msg}\n\nWould you like to open the official GitHub Releases page in your browser?",
+                                ):
+                                    webbrowser.open("https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases")
+                    except Exception as err:
+                        print(f"[UpdateCheck] UI error: {err}")
                 try:
                     self.after(0, _ui)
                 except Exception:
                     pass
-            except Exception:
-                pass
+            except Exception as e:
+                if not silent_if_latest:
+                    import webbrowser
+                    try:
+                        webbrowser.open("https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases")
+                    except Exception:
+                        pass
         threading.Thread(target=_worker, daemon=True).start()
 
     def _check_updates_background(self) -> None:

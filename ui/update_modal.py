@@ -4,18 +4,19 @@ import os
 from pathlib import Path
 import threading
 from tkinter import messagebox
+import webbrowser
 import customtkinter as ctk
 
 from app.updater import UpdateManifest, apply_update_and_restart, download_update_installer
-from app.version import APP_VERSION
+from app.version import APP_VERSION, GITHUB_RELEASES_URL
 
 
 class UpdateModal(ctk.CTkToplevel):
     def __init__(self, parent: ctk.CTk, manifest: UpdateManifest) -> None:
         super().__init__(parent)
         self.manifest = manifest
-        self.title("Software Update Available - DeepX Vision Pro")
-        self.geometry("540x510")
+        self.title("Software Update - DeepX Vision Pro")
+        self.geometry("560x540")
         self.resizable(False, False)
         self.configure(fg_color="#0F172A")
         self.transient(parent)
@@ -30,7 +31,7 @@ class UpdateModal(ctk.CTkToplevel):
     def _build_ui(self) -> None:
         # Header
         head = ctk.CTkFrame(self, fg_color="transparent")
-        head.pack(fill="x", padx=24, pady=(20, 8))
+        head.pack(fill="x", padx=24, pady=(18, 6))
 
         ctk.CTkLabel(
             head,
@@ -58,32 +59,55 @@ class UpdateModal(ctk.CTkToplevel):
             text_color="#FFFFFF",
         ).pack(padx=8, pady=2)
 
+        # GitHub Official Link Banner
+        gh_bar = ctk.CTkFrame(self, corner_radius=8, fg_color="#1E293B", border_width=1, border_color="#334155")
+        gh_bar.pack(fill="x", padx=24, pady=(6, 8))
+
+        ctk.CTkLabel(
+            gh_bar,
+            text="Official GitHub Releases:",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#94A3B8",
+        ).pack(side="left", padx=(12, 6), pady=8)
+
+        ctk.CTkButton(
+            gh_bar,
+            text="🌐 Open GitHub Page in Browser",
+            height=26,
+            corner_radius=6,
+            fg_color="#0284C7",
+            hover_color="#0369A1",
+            text_color="#FFFFFF",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            command=self._open_github_release,
+        ).pack(side="right", padx=(6, 12), pady=6)
+
         # Changelog Card
         card = ctk.CTkFrame(self, corner_radius=12, fg_color="#1E293B", border_width=1, border_color="#334155")
-        card.pack(fill="both", expand=True, padx=24, pady=10)
+        card.pack(fill="both", expand=True, padx=24, pady=(2, 10))
 
         ctk.CTkLabel(
             card,
             text="What's New in this Release:",
             font=ctk.CTkFont(size=12, weight="bold"),
             text_color="#F8FAFC",
-        ).pack(anchor="w", padx=16, pady=(12, 6))
+        ).pack(anchor="w", padx=16, pady=(10, 4))
 
         scroll = ctk.CTkScrollableFrame(card, fg_color="transparent")
-        scroll.pack(fill="both", expand=True, padx=12, pady=(0, 10))
+        scroll.pack(fill="both", expand=True, padx=12, pady=(0, 8))
 
         if self.manifest.changelog:
             for item in self.manifest.changelog:
                 i_row = ctk.CTkFrame(scroll, fg_color="transparent")
-                i_row.pack(fill="x", anchor="w", pady=3)
+                i_row.pack(fill="x", anchor="w", pady=2)
                 ctk.CTkLabel(i_row, text="•", font=ctk.CTkFont(size=14, weight="bold"), text_color="#38BDF8").pack(side="left", padx=(4, 8), anchor="n")
-                ctk.CTkLabel(i_row, text=item, font=ctk.CTkFont(size=12), text_color="#CBD5E1", wraplength=410, justify="left").pack(side="left")
+                ctk.CTkLabel(i_row, text=item, font=ctk.CTkFont(size=11), text_color="#CBD5E1", wraplength=420, justify="left").pack(side="left")
         else:
-            ctk.CTkLabel(scroll, text="Performance enhancements and bug fixes.", text_color="#CBD5E1").pack(anchor="w", padx=8)
+            ctk.CTkLabel(scroll, text="Performance enhancements, core library updates, and stability fixes.", text_color="#CBD5E1").pack(anchor="w", padx=8)
 
         # Progress Area
         self.prog_container = ctk.CTkFrame(self, fg_color="transparent")
-        self.prog_container.pack(fill="x", padx=24, pady=(0, 10))
+        self.prog_container.pack(fill="x", padx=24, pady=(0, 8))
 
         self.prog_bar = ctk.CTkProgressBar(self.prog_container, height=10, progress_color="#3B82F6")
         self.prog_bar.set(0)
@@ -96,11 +120,11 @@ class UpdateModal(ctk.CTkToplevel):
 
         # Footer Actions
         footer = ctk.CTkFrame(self, fg_color="transparent")
-        footer.pack(fill="x", padx=24, pady=(0, 20))
+        footer.pack(fill="x", padx=24, pady=(0, 16))
 
         self.btn_action = ctk.CTkButton(
             footer,
-            text="⚡ Download & Install Update",
+            text="⚡ Update Now (Auto Download & Install)",
             height=38,
             corner_radius=8,
             fg_color="#2563EB",
@@ -111,18 +135,39 @@ class UpdateModal(ctk.CTkToplevel):
         )
         self.btn_action.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
-        self.btn_later = ctk.CTkButton(
+        self.btn_browser = ctk.CTkButton(
             footer,
-            text="Remind Me Later",
-            width=120,
+            text="🌐 Download in Browser",
+            width=150,
             height=38,
             corner_radius=8,
             fg_color="#334155",
             hover_color="#475569",
             text_color="#F8FAFC",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            command=self._open_browser_download,
+        )
+        self.btn_browser.pack(side="left", padx=(0, 8))
+
+        self.btn_later = ctk.CTkButton(
+            footer,
+            text="Later",
+            width=70,
+            height=38,
+            corner_radius=8,
+            fg_color="#1E293B",
+            hover_color="#334155",
+            text_color="#94A3B8",
             command=self._on_close,
         )
         self.btn_later.pack(side="right")
+
+    def _open_github_release(self) -> None:
+        webbrowser.open(GITHUB_RELEASES_URL)
+
+    def _open_browser_download(self) -> None:
+        url = self.manifest.download_url or GITHUB_RELEASES_URL
+        webbrowser.open(url)
 
     def _on_action_clicked(self) -> None:
         if self._downloaded_file and self._downloaded_file.is_file():
@@ -130,15 +175,18 @@ class UpdateModal(ctk.CTkToplevel):
             try:
                 apply_update_and_restart(self._downloaded_file)
             except Exception as e:
-                messagebox.showerror("Update Error", f"Could not launch installer: {e}")
+                webbrowser.open(self.manifest.download_url or GITHUB_RELEASES_URL)
+                messagebox.showerror("Update Error", f"Could not launch installer: {e}\n\nOpening download link in browser...")
             return
 
         # Start download
         if not self.manifest.download_url:
-            messagebox.showwarning("Download Error", "No download link provided in update manifest.")
+            webbrowser.open(GITHUB_RELEASES_URL)
+            messagebox.showwarning("Download Notice", "Opening GitHub Releases in browser...")
             return
 
         self.btn_action.configure(state="disabled", text="Downloading Update...")
+        self.btn_browser.configure(state="disabled")
         self.btn_later.configure(text="Cancel Download")
         self.prog_bar.pack(fill="x", pady=(0, 4))
         self.lbl_progress.pack(anchor="w")
@@ -163,8 +211,19 @@ class UpdateModal(ctk.CTkToplevel):
             self.after(0, self._on_download_complete)
         except InterruptedError:
             self.after(0, lambda: self.lbl_progress.configure(text="Download cancelled."))
+            self.after(0, self._reset_buttons)
         except Exception as e:
-            self.after(0, lambda: messagebox.showerror("Download Error", f"Download failed:\n{e}"))
+            # Fallback to browser if auto in-app download fails
+            target_url = self.manifest.download_url or GITHUB_RELEASES_URL
+            try:
+                webbrowser.open(target_url)
+            except Exception:
+                pass
+            self.after(0, lambda err=e, u=target_url: messagebox.showwarning(
+                "Auto Update Fallback",
+                f"Automatic in-app download encountered an issue:\n{err}\n\n"
+                f"Opening the official installer directly in Google Chrome / Browser:\n{u}"
+            ))
             self.after(0, self._reset_buttons)
 
     def _update_progress_ui(self, pct: float, mb_done: float, mb_tot: float, spd: str) -> None:
@@ -184,6 +243,7 @@ class UpdateModal(ctk.CTkToplevel):
             text="🚀 Updating & Replacing Application…",
             fg_color="#10B981",
         )
+        self.btn_browser.configure(state="disabled")
         self.btn_later.configure(state="disabled")
 
         def _launch():
@@ -191,14 +251,20 @@ class UpdateModal(ctk.CTkToplevel):
                 if self._downloaded_file and self._downloaded_file.is_file():
                     apply_update_and_restart(self._downloaded_file)
             except Exception as e:
-                messagebox.showerror("Update Error", f"Could not launch installer: {e}")
+                # If silent launch fails, launch regular or open browser
+                try:
+                    os.startfile(str(self._downloaded_file))
+                except Exception:
+                    webbrowser.open(self.manifest.download_url or GITHUB_RELEASES_URL)
+                messagebox.showerror("Update Error", f"Could not launch installer automatically: {e}\n\nOpening installer file location...")
                 self._reset_buttons()
 
         self.after(900, _launch)
 
     def _reset_buttons(self) -> None:
-        self.btn_action.configure(state="normal", text="⚡ Download & Install Update")
-        self.btn_later.configure(state="normal", text="Remind Me Later")
+        self.btn_action.configure(state="normal", text="⚡ Update Now (Auto Download & Install)")
+        self.btn_browser.configure(state="normal")
+        self.btn_later.configure(state="normal", text="Later")
 
     def _on_close(self) -> None:
         if self._download_thread and self._download_thread.is_alive():

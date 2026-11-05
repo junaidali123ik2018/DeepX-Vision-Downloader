@@ -1,6 +1,6 @@
 ; Script generated for DeepX Vision Downloader
 #define MyAppName "DeepX Vision Downloader"
-#define MyAppVersion "2.6.3"
+#define MyAppVersion "2.6.4"
 #define MyAppPublisher "Junaid Ali"
 #define MyAppExeName "DeepX Vision Downloader.exe"
 

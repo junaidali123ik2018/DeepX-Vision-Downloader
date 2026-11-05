@@ -926,18 +926,28 @@ class SettingsDialog(ctk.CTkToplevel):
             def _check():
                 has_up, manifest, msg = check_for_updates()
                 def _ui():
+                    import webbrowser
+                    import tkinter.messagebox as mb
                     if has_up and manifest:
                         lbl_up_status.configure(text=f"New version v{manifest.version} available!", text_color="#10B981")
                         UpdateModal(self, manifest)
                     elif manifest:
-                        import tkinter.messagebox as mb
-                        if mb.askyesno("Update Check", f"{msg}\n\nDo you want to re-download and auto-install/replace version v{manifest.version} now?"):
-                            lbl_up_status.configure(text=f"Launching updater for v{manifest.version}...", text_color="#10B981")
-                            UpdateModal(self, manifest)
-                        else:
-                            lbl_up_status.configure(text=msg, text_color="#38BDF8")
-                    else:
                         lbl_up_status.configure(text=msg, text_color="#38BDF8")
+                        ans = mb.askyesnocancel(
+                            "DeepX Vision Downloader - Update Check",
+                            f"{msg}\n\n"
+                            f"• Click [Yes] to auto re-download & reinstall v{manifest.version}\n"
+                            f"• Click [No] to open GitHub Releases page in your web browser (Chrome)\n"
+                            f"• Click [Cancel] to close",
+                        )
+                        if ans is True:
+                            UpdateModal(self, manifest)
+                        elif ans is False:
+                            webbrowser.open("https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases")
+                    else:
+                        lbl_up_status.configure(text=msg, text_color="#EF4444")
+                        if mb.askyesno("Update Check", f"{msg}\n\nWould you like to open GitHub Releases in browser?"):
+                            webbrowser.open("https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases")
                 self.after(0, _ui)
             import threading
             threading.Thread(target=_check, daemon=True).start()
@@ -951,5 +961,7 @@ class SettingsDialog(ctk.CTkToplevel):
             import threading
             threading.Thread(target=_eng, daemon=True).start()
 
+        import webbrowser
         ctk.CTkButton(b_row, text="🔄 Check for App Updates", height=32, fg_color="#2563EB", hover_color="#1D4ED8", font=ctk.CTkFont(size=11, weight="bold"), command=on_check_update).pack(side="left", fill="x", expand=True, padx=(0, 6))
-        ctk.CTkButton(b_row, text="⚡ Update yt-dlp Core Engine", height=32, fg_color="#334155", hover_color="#475569", font=ctk.CTkFont(size=11), command=on_update_engine).pack(side="right")
+        ctk.CTkButton(b_row, text="🌐 GitHub Releases", height=32, fg_color="#0284C7", hover_color="#0369A1", font=ctk.CTkFont(size=11, weight="bold"), command=lambda: webbrowser.open("https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases")).pack(side="left", padx=(0, 6))
+        ctk.CTkButton(b_row, text="⚡ Update yt-dlp", height=32, fg_color="#334155", hover_color="#475569", font=ctk.CTkFont(size=11), command=on_update_engine).pack(side="right")
