@@ -1,13 +1,13 @@
 {
-  "version": "2.6.1",
-  "release_date": "2026-11-04",
-  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.6.1/DeepX_Vision_Downloader_Pro_Setup_v2.6.1.exe",
+  "version": "2.6.2",
+  "release_date": "2026-11-05",
+  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.6.2/DeepX_Vision_Downloader_Pro_Setup_v2.6.2.exe",
   "changelog": [
-    "2.6.1: Dedicated 'Download File Info' modal on extension & browser download clicks",
-    "Auto-deploy unpacked 'DeepX Vision Extension' folder directly to user Desktop",
-    "Independent IPC bridge decoupled completely from external downloader software",
-    "Robust direct movie and CDN stream download fallback for netnaija and streaming sites",
-    "Editable title, quality selector, and custom save destination before downloading"
+    "2.6.2: Complete support for 10-Hour+ long videos without timeouts or 403 blocks",
+    "16 concurrent fragment connections (IDM-grade turbo speed) for DASH, HLS, and direct streams",
+    "Infinite retry resilience: 100 fragment retries, 50 general retries, and chunk-level auto-resume",
+    "Stream-copy zero-reencode FFmpeg muxing preventing CPU freezes on multi-gigabyte videos",
+    "Cleaned software UI by removing internal extension tab for pure high-speed downloading"
   ],
   "mandatory": false
 }

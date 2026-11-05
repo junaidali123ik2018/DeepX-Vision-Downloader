@@ -121,16 +121,27 @@ def apply_ytdl_robust_options(options: dict) -> dict:
     if target and "impersonate" not in options:
         options["impersonate"] = target
 
-    # Ensure retries and stability for long videos (e.g. 2hr+ movies / streams)
-    options.setdefault("retries", 15)
-    options.setdefault("fragment_retries", 15)
-    options.setdefault("file_access_retries", 5)
-    options.setdefault("skip_unavailable_fragments", True)
-    options.setdefault("socket_timeout", 45)
-    options.setdefault("continuedl", True)
-    options.setdefault("buffersize", 1048576)
-    # Concurrent fragment downloads for HLS/DASH fragments
-    options.setdefault("concurrent_fragment_downloads", 4)
+    # 1. 10-Hour & Long Video Turbo Settings (IDM-grade 16 concurrency & infinite resilience)
+    options["retries"] = 50
+    options["fragment_retries"] = 100
+    options["file_access_retries"] = 15
+    options["extractor_retries"] = 5
+    options["skip_unavailable_fragments"] = True
+    options["socket_timeout"] = 60
+    options["continuedl"] = True
+    options["buffersize"] = 16777216  # 16 MB high-throughput buffer
+    options["http_chunk_size"] = 10485760  # 10 MB chunk size
+    options["concurrent_fragment_downloads"] = 16  # 16 parallel fragment downloads (IDM speed)
+    options["throttled_rate"] = "100K"  # Auto-reconnect if YouTube throttles speed
+
+    # 2. Player client hierarchy for unthrottled downloads without PO token blocks
+    yt_args = options.setdefault("extractor_args", {}).setdefault("youtube", {})
+    yt_args.setdefault("player_client", ["android", "ios", "web"])
+    yt_args.setdefault("player_skip", ["webpage", "configs"])
+
+    # 3. Stream Copy FFmpeg muxing (Instant merge without re-encoding)
+    options.setdefault("postprocessor_args", {})
+    options["postprocessor_args"].setdefault("Merger", ["-c:v", "copy", "-c:a", "copy"])
 
     return options
 

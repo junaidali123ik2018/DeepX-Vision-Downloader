@@ -309,44 +309,62 @@ def _download_chunk_range(
     headers: dict[str, str],
     cookies: dict[str, str],
     progress_callback: Callable[[int], None],
-    chunk_buffer_size: int = 65536,
+    chunk_buffer_size: int = 262144,
 ) -> None:
-    """Downloads a specific byte range and writes to part_path."""
-    downloaded_in_part = 0
-    if part_path.is_file():
-        downloaded_in_part = part_path.stat().st_size
+    """Downloads a specific byte range with auto-retry and chunk-level resume (IDM-grade)."""
+    max_retries = 35
+    for attempt in range(max_retries):
+        if task.cancel_event.is_set() or task.pause_event.is_set():
+            return
 
-    curr_start = start_byte + downloaded_in_part
-    if curr_start > end_byte:
-        return  # Chunk already completed
+        downloaded_in_part = 0
+        if part_path.is_file():
+            downloaded_in_part = part_path.stat().st_size
 
-    req_headers = dict(headers)
-    req_headers["Range"] = f"bytes={curr_start}-{end_byte}"
-    req_headers["Accept-Encoding"] = "identity"
+        curr_start = start_byte + downloaded_in_part
+        if curr_start > end_byte:
+            return  # Chunk already fully completed
 
-    mode = "ab" if downloaded_in_part > 0 else "wb"
-    with requests.get(
-        url,
-        headers=req_headers,
-        cookies=cookies,
-        stream=True,
-        timeout=30,
-        verify=False,
-    ) as response, open(part_path, mode) as f:
-        if response.status_code >= 400:
-            raise RuntimeError(f"HTTP status {response.status_code} for chunk range {curr_start}-{end_byte}")
-        for chunk in response.iter_content(chunk_size=chunk_buffer_size):
+        req_headers = dict(headers)
+        req_headers["Range"] = f"bytes={curr_start}-{end_byte}"
+        req_headers["Accept-Encoding"] = "identity"
+
+        try:
+            mode = "ab" if downloaded_in_part > 0 else "wb"
+            with requests.get(
+                url,
+                headers=req_headers,
+                cookies=cookies,
+                stream=True,
+                timeout=(15, 60),
+                verify=False,
+            ) as response, open(part_path, mode) as f:
+                if response.status_code in (416,):
+                    return  # Range satisfied
+                if response.status_code >= 400:
+                    raise RuntimeError(f"HTTP status {response.status_code} for chunk range {curr_start}-{end_byte}")
+                for chunk in response.iter_content(chunk_size=chunk_buffer_size):
+                    if task.cancel_event.is_set() or task.pause_event.is_set():
+                        return
+                    if chunk:
+                        f.write(chunk)
+                        progress_callback(len(chunk))
+
+            # Verify chunk completion
+            if part_path.is_file() and part_path.stat().st_size >= (end_byte - start_byte + 1):
+                return
+        except Exception:
             if task.cancel_event.is_set() or task.pause_event.is_set():
-                break
-            if chunk:
-                f.write(chunk)
-                progress_callback(len(chunk))
+                return
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(min(4, 0.5 * (attempt + 1)))
 
 
 def download_segmented_http_task(
     task: DownloadTask,
     notify_callback: Callable[[DownloadTask], None],
-    num_connections: int = 10,
+    num_connections: int = 16,
 ) -> bool:
     """
     Downloads direct HTTP/HTTPS files using IDM-Style dynamic segmentation.
@@ -587,15 +605,22 @@ def _download_single_stream(
         with existing_response as response:
             _stream_from(response)
     else:
-        with requests.get(
-            target_url,
-            headers=headers,
-            cookies=cookies,
-            stream=True,
-            timeout=30,
-            verify=False,
-        ) as response:
-            _stream_from(response)
+        try:
+            with requests.get(
+                target_url,
+                headers=headers,
+                cookies=cookies,
+                stream=True,
+                timeout=30,
+                verify=False,
+            ) as response:
+                if response.status_code >= 400:
+                    raise RuntimeError(f'Server returned HTTP Error {response.status_code}')
+                _stream_from(response)
+        except Exception as e:
+            if _download_curl_cffi_fallback(task, final_output, headers, notify_callback):
+                return True
+            raise e
 
     if task.cancel_event.is_set() or task.pause_event.is_set():
         with task.lock:
@@ -652,8 +677,17 @@ def _download_curl_cffi_fallback(
     notify_callback(task)
 
     session = c_requests.Session(impersonate="chrome120")
+    if task.cookies_source and Path(task.cookies_source).is_file():
+        try:
+            c_dict = parse_netscape_cookies(task.cookies_source)
+            session.cookies.update(c_dict)
+        except Exception:
+            pass
     req_headers = dict(headers)
-    resp = session.get(task.url, headers=req_headers, stream=True, timeout=30)
+    try:
+        resp = session.get(task.url, headers=req_headers, stream=True, timeout=60, allow_redirects=True)
+    except Exception:
+        return False
     if resp.status_code >= 400:
         return False
 
@@ -698,4 +732,20 @@ def _download_curl_cffi_fallback(
         task.conversion_progress = 1.0
         task.conversion_stage = "Download complete"
     notify_callback(task)
+
+    try:
+        history_store.record_completed(
+            DownloadRecord(
+                platform=task.platform or "direct",
+                media_id=task.media_id or "direct_file",
+                canonical_url=task.url,
+                creator=task.creator or "Direct Download",
+                title=final_output.name,
+                saved_filename=final_output.name,
+                saved_filepath=str(final_output),
+                file_extension=final_output.suffix,
+            )
+        )
+    except Exception:
+        pass
     return True

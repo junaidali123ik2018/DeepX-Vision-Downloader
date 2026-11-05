@@ -340,20 +340,28 @@ class DownloadManager:
             "progress_hooks": [progress_hook],
             "postprocessor_hooks": [postprocessor_hook],
             "postprocessors": postprocessors,
-            "buffersize": 2097152,
+            "buffersize": 16777216,  # 16 MB buffer
             "continuedl": True,
-            "retries": 15,
-            "fragment_retries": 15,
-            "file_access_retries": 5,
-            "extractor_retries": 2,
+            "retries": 50,  # 50 retries for 10-hour stability
+            "fragment_retries": 100,  # Infinite/high fragment resilience
+            "file_access_retries": 15,
+            "extractor_retries": 5,
+            "skip_unavailable_fragments": True,
             "socket_timeout": 60,
-            "concurrent_fragment_downloads": 8,
+            "concurrent_fragment_downloads": 16,  # 16 parallel threads (IDM-grade)
             "http_chunk_size": 10485760,
+            "throttled_rate": "100K",
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android", "ios", "web"],
+                    "player_skip": ["webpage", "configs"],
+                }
+            },
         }
         if ffmpeg_path:
             options["ffmpeg_location"] = ffmpeg_path
             if "AUDIO" not in task.quality.upper():
-                options["merge_output_format"] = "mp4"
+                options["merge_output_format"] = "mp4/mkv" 
         if task.speed_limit_bps:
             options["ratelimit"] = task.speed_limit_bps
 
@@ -389,11 +397,21 @@ class DownloadManager:
             options["referer"] = task.referer
 
         # Fast-Path: IDM-Style High-Performance Multi-Segment HTTP Engine for direct files
-        from app.http_engine import KNOWN_VIDEO_PLATFORMS
+        from app.http_engine import KNOWN_VIDEO_PLATFORMS, _download_curl_cffi_fallback
         is_social = any(domain in task.url.lower() for domain in KNOWN_VIDEO_PLATFORMS)
         if not is_social and (is_direct_file_url(task.url, task.filename) or getattr(task, "http_headers", None)):
             try:
-                if download_segmented_http_task(task, self._notify, num_connections=10):
+                if download_segmented_http_task(task, self._notify, num_connections=16):
+                    return
+            except Exception:
+                pass
+            try:
+                dest_dir = Path(task.destination)
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                fn = sanitize_filename(task.filename or "video.mp4")
+                if not os.path.splitext(fn)[1]:
+                    fn += ".mp4"
+                if _download_curl_cffi_fallback(task, dest_dir / fn, getattr(task, "http_headers", {}), self._notify):
                     return
             except Exception:
                 pass
@@ -620,7 +638,19 @@ class DownloadManager:
 
             # Automatic direct HTTP IDM-style segmented fallback
             try:
-                if download_segmented_http_task(task, self._notify, num_connections=10):
+                if download_segmented_http_task(task, self._notify, num_connections=16):
+                    return
+            except Exception:
+                pass
+
+            # Automatic direct Chrome TLS anti-bot fallback
+            try:
+                dest_dir = Path(task.destination)
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                fn = sanitize_filename(task.filename or "video.mp4")
+                if not os.path.splitext(fn)[1]:
+                    fn += ".mp4"
+                if _download_curl_cffi_fallback(task, dest_dir / fn, getattr(task, "http_headers", {}), self._notify):
                     return
             except Exception:
                 pass

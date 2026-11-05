@@ -375,33 +375,6 @@ class HQVideoDownloaderApp(ctk.CTk):
             button.pack(fill="x", padx=10, pady=1)
             self.nav_buttons[key] = button
 
-        # Extension / Tools Section
-        ctk.CTkLabel(
-            self.sidebar,
-            text="Tools",
-            text_color="#64748B",
-            font=ctk.CTkFont(size=11, weight="bold"),
-            anchor="w",
-        ).pack(fill="x", padx=16, pady=(10, 2))
-
-        ext_icon = self._get_icon("nav_extension.png", (18, 18))
-        btn_ext = ctk.CTkButton(
-            self.sidebar,
-            image=ext_icon,
-            compound="left",
-            text="  Extension",
-            anchor="w",
-            height=36,
-            corner_radius=8,
-            fg_color="transparent",
-            hover_color="#2563EB",
-            text_color="#FFFFFF",
-            font=ctk.CTkFont(size=12, weight="bold"),
-            command=lambda: self.show_page("extension"),
-        )
-        btn_ext.pack(fill="x", padx=10, pady=1)
-        self.nav_buttons["extension"] = btn_ext
-
         # Bottom Settings
         settings_icon = self._get_icon("nav_settings.png", (18, 18))
         ctk.CTkButton(
