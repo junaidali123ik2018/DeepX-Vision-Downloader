@@ -23,6 +23,7 @@ class DownloadTask:
     url: str
     destination: str
     quality: str = "Best Quality"
+    audio_language: str = "Default"
     speed_limit_bps: int | None = None
     numbering: int | None = None
     cookies_source: str | None = None

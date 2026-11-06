@@ -140,6 +140,13 @@ class DownloadManager:
                     self._notify(task)
                 else:
                     self._download(task)
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                with task.lock:
+                    task.status = DownloadStatus.FAILED
+                    task.error = str(e)
+                self._notify(task)
             finally:
                 with self._worker_condition:
                     self._active_downloads -= 1
@@ -161,12 +168,54 @@ class DownloadManager:
         except Exception:
             pass
 
-    def _format_selector(self, quality: str, has_ffmpeg: bool) -> tuple[str, list[dict]]:
+    def _format_selector(self, quality: str, has_ffmpeg: bool, audio_language: str = "Default") -> tuple[str, list[dict], dict]:
         postprocessors = []
+        extra_opts = {}
         q_upper = quality.upper()
+        audio_lang_clean = (audio_language or "Default").strip()
+        is_all_audio = "all" in audio_lang_clean.lower() and "mult" in audio_lang_clean.lower()
+
+        # Build clean ISO audio language code
+        lang_code = ""
+        if is_all_audio:
+            extra_opts["audio_multistreams"] = True
+            extra_opts["merge_output_format"] = "mkv"
+        elif audio_lang_clean.lower() not in ("default", "original", "default / original", "auto", ""):
+            # 1. Try extracting 2-letter or 3-letter code inside parentheses: "Hindi (hi) [Dubbed]" -> "hi"
+            m_code = re.search(r"\(([a-zA-Z]{2,3})\)", audio_lang_clean)
+            if m_code:
+                lang_code = m_code.group(1).lower()
+            else:
+                lang_map = {
+                    "hindi": "hi", "urdu": "ur", "english": "en", "spanish": "es",
+                    "arabic": "ar", "french": "fr", "portuguese": "pt", "german": "de",
+                    "russian": "ru", "japanese": "ja", "korean": "ko", "turkish": "tr",
+                    "bengali": "bn", "italian": "it", "punjabi": "pa", "chinese": "zh",
+                    "indonesian": "id", "thai": "th", "vietnamese": "vi", "tamil": "ta",
+                    "telugu": "te", "marathi": "mr", "malayalam": "ml", "polish": "pl",
+                }
+                for k, v in lang_map.items():
+                    if k in audio_lang_clean.lower():
+                        lang_code = v
+                        break
+            if not lang_code:
+                m = re.match(r"^([a-zA-Z]{2,3})", audio_lang_clean)
+                if m:
+                    lang_code = m.group(1).lower()
+
+        # Target audio selector and fallback
+        if is_all_audio:
+            target_ba = "ba"
+        elif lang_code:
+            target_ba = f"bestaudio[language^={lang_code}]"
+        else:
+            target_ba = "bestaudio"
 
         if "AUDIO" in q_upper:
-            format_str = "bestaudio/best"
+            if lang_code:
+                format_str = f"{target_ba}/bestaudio/best"
+            else:
+                format_str = "bestaudio/best"
             if has_ffmpeg:
                 target_codec = "mp3"
                 if "M4A" in q_upper:
@@ -183,28 +232,77 @@ class DownloadManager:
                     "preferredquality": "320",
                 })
         elif "8K" in q_upper or "4320" in q_upper:
-            # Download best available; post-download will upscale if needed
-            format_str = "bestvideo+bestaudio/best" if has_ffmpeg else "b"
+            if is_all_audio:
+                format_str = "bestvideo[protocol^=http]+mergeall[vcodec=none]/bestvideo+mergeall[vcodec=none]/bestvideo+ba/b" if has_ffmpeg else "b"
+            elif lang_code:
+                format_str = f"bestvideo[protocol^=http]+{target_ba}/bestvideo+{target_ba}/bestvideo[protocol^=http]+ba/bestvideo+ba/b" if has_ffmpeg else "b"
+            else:
+                format_str = "bestvideo[protocol^=http]+ba/bestvideo+ba/b" if has_ffmpeg else "b"
         elif "4K" in q_upper or "2160" in q_upper:
-            format_str = "bestvideo[height<=2160]+bestaudio/best[height<=2160]/best" if has_ffmpeg else "best[height<=2160]/best"
+            if is_all_audio:
+                format_str = "bestvideo[height<=2160][protocol^=http]+mergeall[vcodec=none]/bestvideo[height<=2160]+mergeall[vcodec=none]/bestvideo[height<=2160]+ba/b[height<=2160]/b" if has_ffmpeg else "best[height<=2160]/b"
+            elif lang_code:
+                format_str = f"bestvideo[height<=2160][protocol^=http]+{target_ba}/bestvideo[height<=2160]+{target_ba}/bestvideo[height<=2160]+ba/b[height<=2160]/b" if has_ffmpeg else "best[height<=2160]/b"
+            else:
+                format_str = "bestvideo[height<=2160]+ba/b[height<=2160]/b" if has_ffmpeg else "best[height<=2160]/b"
         elif "2K" in q_upper or "1440" in q_upper:
-            format_str = "bestvideo[height<=1440]+bestaudio/best[height<=1440]/best" if has_ffmpeg else "best[height<=1440]/best"
+            if is_all_audio:
+                format_str = "bestvideo[height<=1440][protocol^=http]+mergeall[vcodec=none]/bestvideo[height<=1440]+mergeall[vcodec=none]/bestvideo[height<=1440]+ba/b[height<=1440]/b" if has_ffmpeg else "best[height<=1440]/b"
+            elif lang_code:
+                format_str = f"bestvideo[height<=1440][protocol^=http]+{target_ba}/bestvideo[height<=1440]+{target_ba}/bestvideo[height<=1440]+ba/b[height<=1440]/b" if has_ffmpeg else "best[height<=1440]/b"
+            else:
+                format_str = "bestvideo[height<=1440]+ba/b[height<=1440]/b" if has_ffmpeg else "best[height<=1440]/b"
         elif "1080" in q_upper:
-            format_str = "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best" if has_ffmpeg else "best[height<=1080]/best"
+            if is_all_audio:
+                format_str = "bestvideo[height<=1080][protocol^=http]+mergeall[vcodec=none]/bestvideo[height<=1080]+mergeall[vcodec=none]/bestvideo[height<=1080]+ba/b[height<=1080]/b" if has_ffmpeg else "best[height<=1080]/b"
+            elif lang_code:
+                format_str = f"bestvideo[height<=1080][protocol^=http]+{target_ba}/bestvideo[height<=1080]+{target_ba}/bestvideo[height<=1080]+ba/b[height<=1080]/b" if has_ffmpeg else "best[height<=1080]/b"
+            else:
+                format_str = "bestvideo[height<=1080]+ba/b[height<=1080]/b" if has_ffmpeg else "best[height<=1080]/b"
         elif "720" in q_upper:
-            format_str = "bestvideo[height<=720]+bestaudio/best[height<=720]/best" if has_ffmpeg else "best[height<=720]/best"
+            if is_all_audio:
+                format_str = "bestvideo[height<=720][protocol^=http]+mergeall[vcodec=none]/bestvideo[height<=720]+mergeall[vcodec=none]/bestvideo[height<=720]+ba/b[height<=720]/b" if has_ffmpeg else "best[height<=720]/b"
+            elif lang_code:
+                format_str = f"bestvideo[height<=720][protocol^=http]+{target_ba}/bestvideo[height<=720]+{target_ba}/bestvideo[height<=720]+ba/b[height<=720]/b" if has_ffmpeg else "best[height<=720]/b"
+            else:
+                format_str = "bestvideo[height<=720]+ba/b[height<=720]/b" if has_ffmpeg else "best[height<=720]/b"
         elif "480" in q_upper:
-            format_str = "bestvideo[height<=480]+bestaudio/best[height<=480]/best" if has_ffmpeg else "best[height<=480]/best"
+            if is_all_audio:
+                format_str = "bestvideo[height<=480][protocol^=http]+mergeall[vcodec=none]/bestvideo[height<=480]+mergeall[vcodec=none]/bestvideo[height<=480]+ba/b[height<=480]/b" if has_ffmpeg else "best[height<=480]/b"
+            elif lang_code:
+                format_str = f"bestvideo[height<=480][protocol^=http]+{target_ba}/bestvideo[height<=480]+{target_ba}/bestvideo[height<=480]+ba/b[height<=480]/b" if has_ffmpeg else "best[height<=480]/b"
+            else:
+                format_str = "bestvideo[height<=480]+ba/b[height<=480]/b" if has_ffmpeg else "best[height<=480]/b"
         elif "360" in q_upper:
-            format_str = "bestvideo[height<=360]+bestaudio/best[height<=360]/best" if has_ffmpeg else "best[height<=360]/best"
+            if is_all_audio:
+                format_str = "bestvideo[height<=360][protocol^=http]+mergeall[vcodec=none]/bestvideo[height<=360]+mergeall[vcodec=none]/bestvideo[height<=360]+ba/b[height<=360]/b" if has_ffmpeg else "best[height<=360]/b"
+            elif lang_code:
+                format_str = f"bestvideo[height<=360][protocol^=http]+{target_ba}/bestvideo[height<=360]+{target_ba}/bestvideo[height<=360]+ba/b[height<=360]/b" if has_ffmpeg else "best[height<=360]/b"
+            else:
+                format_str = "bestvideo[height<=360]+ba/b[height<=360]/b" if has_ffmpeg else "best[height<=360]/b"
         elif "240" in q_upper:
-            format_str = "bestvideo[height<=240]+bestaudio/best[height<=240]/best" if has_ffmpeg else "best[height<=240]/best"
+            if is_all_audio:
+                format_str = "bestvideo[height<=240][protocol^=http]+mergeall[vcodec=none]/bestvideo[height<=240]+mergeall[vcodec=none]/bestvideo[height<=240]+ba/b[height<=240]/b" if has_ffmpeg else "best[height<=240]/b"
+            elif lang_code:
+                format_str = f"bestvideo[height<=240][protocol^=http]+{target_ba}/bestvideo[height<=240]+{target_ba}/bestvideo[height<=240]+ba/b[height<=240]/b" if has_ffmpeg else "best[height<=240]/b"
+            else:
+                format_str = "bestvideo[height<=240]+ba/b[height<=240]/b" if has_ffmpeg else "best[height<=240]/b"
         elif "144" in q_upper:
-            format_str = "bestvideo[height<=144]+bestaudio/best[height<=144]/best" if has_ffmpeg else "best[height<=144]/best"
+            if is_all_audio:
+                format_str = "bestvideo[height<=144][protocol^=http]+mergeall[vcodec=none]/bestvideo[height<=144]+mergeall[vcodec=none]/bestvideo[height<=144]+ba/b[height<=144]/b" if has_ffmpeg else "best[height<=144]/b"
+            elif lang_code:
+                format_str = f"bestvideo[height<=144][protocol^=http]+{target_ba}/bestvideo[height<=144]+{target_ba}/bestvideo[height<=144]+ba/b[height<=144]/b" if has_ffmpeg else "best[height<=144]/b"
+            else:
+                format_str = "bestvideo[height<=144]+ba/b[height<=144]/b" if has_ffmpeg else "best[height<=144]/b"
         else:  # "Best Available"
-            format_str = "bv*+ba/b" if has_ffmpeg else "b"
+            if is_all_audio:
+                format_str = "bv*[protocol^=http]+mergeall[vcodec=none]/bv*+mergeall[vcodec=none]/bv*+ba/b" if has_ffmpeg else "b"
+            elif lang_code:
+                format_str = f"bv*[protocol^=http]+{target_ba}/bv*+{target_ba}/bv*[protocol^=http]+ba/bv*+ba/b" if has_ffmpeg else "b"
+            else:
+                format_str = "bv*[protocol^=http]+ba/bv*+ba/b" if has_ffmpeg else "b"
 
-        return format_str, postprocessors
+        return format_str, postprocessors, extra_opts
 
     def _download(self, task: DownloadTask) -> None:
         try:
@@ -320,7 +418,8 @@ class DownloadManager:
         except (RuntimeError, Exception):
             ffmpeg_path = shutil.which("ffmpeg")
 
-        format_str, postprocessors = self._format_selector(task.quality, bool(ffmpeg_path))
+        audio_lang = getattr(task, "audio_language", "Default")
+        format_str, postprocessors, extra_opts = self._format_selector(task.quality, bool(ffmpeg_path), audio_lang)
 
         if task.numbering is not None:
             out_template = str(Path(task.destination) / f"{task.numbering:02d}. %(title).200B.%(ext)s")
@@ -355,6 +454,8 @@ class DownloadManager:
                 "Merger": ["-c:v", "copy", "-c:a", "copy"]
             },
         }
+        if extra_opts:
+            options.update(extra_opts)
         if ffmpeg_path:
             options["ffmpeg_location"] = ffmpeg_path
             if "AUDIO" not in task.quality.upper():
@@ -614,7 +715,7 @@ class DownloadManager:
                 task.status = DownloadStatus.PAUSED if task.pause_event.is_set() else DownloadStatus.CANCELLED
                 task.speed_bps = 0
             self._notify(task)
-        except (yt_dlp.utils.DownloadError, OSError, ValueError) as error:
+        except Exception as error:
             _stop_ticker()
             err_str = str(error)
             # Automatic fallback for TikTok if yt-dlp gets IP-blocked or encounters format issues

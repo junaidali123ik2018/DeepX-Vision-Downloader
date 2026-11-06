@@ -427,6 +427,34 @@ class SettingsDialog(ctk.CTkToplevel):
             command=self._browse_dl_folder,
         ).pack(side="right")
 
+        # Preferred Audio Language
+        lang_row = ctk.CTkFrame(card, fg_color="transparent")
+        lang_row.pack(fill="x", padx=16, pady=8)
+        ctk.CTkLabel(lang_row, text="Preferred Audio Language :", text_color="#94A3B8").pack(side="left")
+        self.pref_audio_lang_var = ctk.StringVar(value=getattr(self.settings, "preferred_audio_language", "Default / Original"))
+        ctk.CTkOptionMenu(
+            lang_row,
+            values=[
+                "Default / Original",
+                "Hindi",
+                "Urdu",
+                "English",
+                "Spanish",
+                "Arabic",
+                "French",
+                "German",
+                "Russian",
+                "All Languages (Multi-Track)",
+            ],
+            variable=self.pref_audio_lang_var,
+            width=180,
+            height=30,
+            fg_color="#1E293B",
+            button_color="#2563EB",
+            button_hover_color="#1D4ED8",
+            text_color=SET_INK,
+        ).pack(side="right")
+
         # Concurrency
         c_row = ctk.CTkFrame(card, fg_color="transparent")
         c_row.pack(fill="x", padx=16, pady=8)

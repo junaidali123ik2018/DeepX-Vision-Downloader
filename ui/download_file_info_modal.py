@@ -167,7 +167,6 @@ class DownloadFileInfoModal(ctk.CTkToplevel):
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
         ).grid(row=2, column=0, sticky="w", padx=16, pady=8)
 
-        # Ensure initial quality is valid
         matched_quality = "Best Available"
         for opt in QUALITY_OPTIONS:
             if initial_quality and (initial_quality.lower() in opt.lower() or opt.lower() in initial_quality.lower()):

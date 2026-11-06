@@ -15,6 +15,7 @@ class AppSettings:
     default_speed_limit: str = "Unlimited"
     download_thumbnail: bool = True
     subtitle_language: str = "Auto"
+    preferred_audio_language: str = "Default / Original"
     video_format: str = "Auto"
     auto_update: str = "Everyday"
     media_type: str = "Video"

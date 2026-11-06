@@ -1,14 +1,15 @@
 {
-  "version": "2.6.4",
-  "release_date": "2026-11-05",
-  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.6.4/DeepX_Vision_Downloader_Pro_Setup_v2.6.4.exe",
+  "version": "2.6.5",
+  "release_date": "2026-11-07",
+  "download_url": "https://github.com/junaidali123ik2018/DeepX-Vision-Downloader/releases/download/v2.6.5/DeepX_Vision_Downloader_Pro_Setup_v2.6.5.exe",
   "changelog": [
-    "2.6.4: Built-in 1-Click In-App Auto Update & Direct Browser Fallback",
-    "Added direct 'Update' button on Topbar and Sidebar for instant update check",
-    "Added direct clickable GitHub Releases button/link to download installer manually in Chrome",
-    "Automatic Chrome/Browser fallback if in-app update download is blocked or interrupted",
-    "Preserved true 8K/4K/1080p uncompressed original video quality and 320kbps studio sound",
-    "Core engines upgraded: yt-dlp 2026.10.26, curl_cffi 0.17.0, urllib3 2.8.0, certifi 2026.10.23, FFmpeg stream-copy"
+    "2.6.5: New Dedicated 'Download by Language' Feature with Multi-Language Audio Track Selection",
+    "Dedicated Sidebar page for downloading videos in specific languages (Hindi, Urdu, English, Spanish, Arabic, etc.)",
+    "1-Click 'Inspect Audio Tracks' tool to auto-probe, detect, and list all available audio dubs on YouTube & Facebook videos",
+    "Lossless stream-copy FFmpeg muxing preserving 100% original uncompressed video resolution and studio-quality sound",
+    "High-speed HTTPS video & audio stream prioritization preventing HLS/m3u8 connection stalls",
+    "Multi-Track MKV support: Option to bundle all available languages into a single video file",
+    "Reverted standard download dialog to keep normal downloads fast and clutter-free"
   ],
   "mandatory": false
 }

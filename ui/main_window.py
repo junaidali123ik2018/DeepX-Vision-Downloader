@@ -318,6 +318,7 @@ class HQVideoDownloaderApp(ctk.CTk):
 
         download_items = (
             ("downloads", "nav_downloads.png", "  General"),
+            ("language_downloader", "plat_youtube.png", "  Download by Language"),
             ("image_downloader", "nav_image.png", "  Image Downloader"),
             ("channel_hub", "plat_youtube.png", "  YTB Auto-save"),
             ("tiktok_hub", "plat_tiktok.png", "  TikTok Auto-save"),
@@ -573,6 +574,7 @@ class HQVideoDownloaderApp(ctk.CTk):
 
         self._build_dashboard_page()
         self._build_downloads_page()
+        self._build_language_downloader_page()
         self._build_image_downloader_page()
         self._build_channel_hub_page()
         self._build_tiktok_hub_page()
@@ -4489,8 +4491,366 @@ class HQVideoDownloaderApp(ctk.CTk):
         self._queue_urls([url])
         self.show_page("downloads")
 
+    def _build_language_downloader_page(self) -> None:
+        """Dedicated page to paste a video URL, inspect multi-language audio dubs, and download in a selected language."""
+        self.language_downloader_page = ctk.CTkScrollableFrame(self.content, fg_color="transparent")
+        self.language_downloader_page.grid_columnconfigure(0, weight=1)
+
+        # Header Title & Description
+        ctk.CTkLabel(
+            self.language_downloader_page,
+            text="🌐 Download by Language",
+            text_color=INK,
+            font=ctk.CTkFont(size=22, weight="bold"),
+        ).pack(anchor="w", padx=28, pady=(22, 2))
+
+        ctk.CTkLabel(
+            self.language_downloader_page,
+            text="Download YouTube, Facebook, and streaming videos in your preferred audio language (Hindi, Urdu, English, Spanish, Dubbed, or All Audio Tracks).",
+            text_color=MUTED,
+            font=ctk.CTkFont(size=12),
+        ).pack(anchor="w", padx=28, pady=(0, 16))
+
+        # 1. URL Input Card
+        url_card = ctk.CTkFrame(self.language_downloader_page, corner_radius=12, fg_color=SURFACE, border_width=1, border_color=BORDER)
+        url_card.pack(fill="x", padx=28, pady=(0, 14))
+        url_card.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            url_card,
+            text="Video URL / Link:",
+            text_color=INK,
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=16, pady=(14, 6))
+
+        self.lang_url_var = ctk.StringVar()
+        self.lang_url_entry = ctk.CTkEntry(
+            url_card,
+            textvariable=self.lang_url_var,
+            placeholder_text="Paste video URL here (e.g. YouTube multi-dubbed video, Facebook, etc.)...",
+            height=36,
+            font=ctk.CTkFont(size=12),
+        )
+        self.lang_url_entry.grid(row=1, column=0, sticky="ew", padx=(16, 8), pady=(0, 14))
+
+        def _on_paste_lang_url():
+            try:
+                clip = self.clipboard_get().strip()
+                if clip:
+                    self.lang_url_var.set(clip)
+                    self._inspect_audio_languages()
+            except Exception:
+                pass
+
+        btn_paste = ctk.CTkButton(
+            url_card,
+            text="📋 Paste",
+            width=80,
+            height=36,
+            corner_radius=8,
+            fg_color=SECONDARY_BTN,
+            hover_color=SECONDARY_BTN_HOVER,
+            text_color=INK,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=_on_paste_lang_url,
+        )
+        btn_paste.grid(row=1, column=1, padx=(0, 8), pady=(0, 14))
+
+        self.btn_inspect_lang = ctk.CTkButton(
+            url_card,
+            text="🔍 Inspect Audio Tracks",
+            width=155,
+            height=36,
+            corner_radius=8,
+            fg_color=BLUE,
+            hover_color=BLUE_HOVER,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            command=self._inspect_audio_languages,
+        )
+        self.btn_inspect_lang.grid(row=1, column=2, padx=(0, 16), pady=(0, 14))
+
+        # 2. Options & Settings Card
+        opt_card = ctk.CTkFrame(self.language_downloader_page, corner_radius=12, fg_color=SURFACE, border_width=1, border_color=BORDER)
+        opt_card.pack(fill="x", padx=28, pady=(0, 14))
+        opt_card.grid_columnconfigure(1, weight=1)
+
+        # Row 0: Audio Language
+        ctk.CTkLabel(
+            opt_card,
+            text="Audio Language:",
+            text_color=INK,
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).grid(row=0, column=0, sticky="w", padx=16, pady=(16, 8))
+
+        lang_options_frame = ctk.CTkFrame(opt_card, fg_color="transparent")
+        lang_options_frame.grid(row=0, column=1, sticky="ew", padx=(0, 16), pady=(16, 8))
+
+        self.lang_choice_var = ctk.StringVar(value="Default / Original")
+        self.lang_menu = ctk.CTkOptionMenu(
+            lang_options_frame,
+            variable=self.lang_choice_var,
+            values=[
+                "Default / Original",
+                "Hindi",
+                "Urdu",
+                "English",
+                "Spanish",
+                "Arabic",
+                "French",
+                "German",
+                "Russian",
+                "Portuguese",
+                "Japanese",
+                "Turkish",
+                "All Languages (Multi-Track)",
+            ],
+            width=220,
+            height=34,
+            corner_radius=6,
+            fg_color=SECONDARY_BTN,
+            button_color=BLUE,
+            button_hover_color=BLUE_HOVER,
+            text_color=INK,
+            font=ctk.CTkFont(size=12),
+        )
+        self.lang_menu.pack(side="left")
+
+        self.lang_detect_label = ctk.CTkLabel(
+            lang_options_frame,
+            text="Paste a link and click 'Inspect Audio Tracks' to auto-detect",
+            text_color=MUTED,
+            font=ctk.CTkFont(size=11),
+        )
+        self.lang_detect_label.pack(side="left", padx=(12, 0))
+
+        # Row 1: Video Quality
+        ctk.CTkLabel(
+            opt_card,
+            text="Video Quality:",
+            text_color=INK,
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).grid(row=1, column=0, sticky="w", padx=16, pady=8)
+
+        self.lang_quality_var = ctk.StringVar(value="Best Available")
+        self.lang_quality_menu = ctk.CTkOptionMenu(
+            opt_card,
+            variable=self.lang_quality_var,
+            values=[
+                "Best Available",
+                "8K Ultra HD",
+                "4K Ultra HD",
+                "1080p (Full HD)",
+                "720p (HD)",
+                "480p (SD)",
+                "Audio (.mp3)",
+            ],
+            width=220,
+            height=34,
+            corner_radius=6,
+            fg_color=SECONDARY_BTN,
+            button_color=BLUE,
+            button_hover_color=BLUE_HOVER,
+            text_color=INK,
+            font=ctk.CTkFont(size=12),
+        )
+        self.lang_quality_menu.grid(row=1, column=1, sticky="w", padx=(0, 16), pady=8)
+
+        # Row 2: Save Destination
+        ctk.CTkLabel(
+            opt_card,
+            text="Save Location:",
+            text_color=INK,
+            font=ctk.CTkFont(size=13, weight="bold"),
+        ).grid(row=2, column=0, sticky="w", padx=16, pady=(8, 16))
+
+        save_box = ctk.CTkFrame(opt_card, fg_color="transparent")
+        save_box.grid(row=2, column=1, sticky="ew", padx=(0, 16), pady=(8, 16))
+        save_box.grid_columnconfigure(0, weight=1)
+
+        self.lang_dest_var = ctk.StringVar(value=str(self.settings.resolved_download_folder()))
+        ctk.CTkEntry(
+            save_box,
+            textvariable=self.lang_dest_var,
+            height=34,
+            font=ctk.CTkFont(size=11),
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 8))
+
+        def _browse_lang_dest():
+            initial = self.lang_dest_var.get().strip() or str(self.settings.resolved_download_folder())
+            chosen = filedialog.askdirectory(parent=self, initialdir=initial, title="Choose Download Location")
+            if chosen:
+                self.lang_dest_var.set(chosen)
+
+        ctk.CTkButton(
+            save_box,
+            text="Browse…",
+            width=80,
+            height=34,
+            corner_radius=6,
+            fg_color=SECONDARY_BTN,
+            hover_color=SECONDARY_BTN_HOVER,
+            text_color=INK,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            command=_browse_lang_dest,
+        ).grid(row=0, column=1)
+
+        # 3. Inspected Details Card
+        self.lang_info_card = ctk.CTkFrame(self.language_downloader_page, corner_radius=12, fg_color=SURFACE, border_width=1, border_color=BORDER)
+        self.lang_info_card.pack(fill="x", padx=28, pady=(0, 16))
+
+        self.lang_info_title = ctk.CTkLabel(
+            self.lang_info_card,
+            text="No video inspected yet",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=MUTED,
+            anchor="w",
+        )
+        self.lang_info_title.pack(fill="x", padx=16, pady=(12, 4))
+
+        self.lang_info_tracks = ctk.CTkLabel(
+            self.lang_info_card,
+            text="Available Audio Tracks will appear here after inspection.",
+            font=ctk.CTkFont(size=11),
+            text_color=MUTED,
+            anchor="w",
+            wraplength=600,
+            justify="left",
+        )
+        self.lang_info_tracks.pack(fill="x", padx=16, pady=(0, 12))
+
+        # 4. Big Start Download Button
+        self.btn_start_lang_dl = ctk.CTkButton(
+            self.language_downloader_page,
+            text="⬇   Start Download in Selected Language",
+            height=44,
+            corner_radius=8,
+            fg_color=BLUE,
+            hover_color=BLUE_HOVER,
+            text_color="#FFFFFF",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            command=self._start_language_download,
+        )
+        self.btn_start_lang_dl.pack(fill="x", padx=28, pady=(0, 24))
+
+    def _inspect_audio_languages(self) -> None:
+        url = self.lang_url_var.get().strip()
+        if not url:
+            messagebox.showwarning("Enter URL", "Please enter or paste a valid video URL to inspect.")
+            return
+
+        self.btn_inspect_lang.configure(state="disabled", text="Inspecting…")
+        self.lang_detect_label.configure(text="Connecting to video source & probing audio tracks…", text_color="#38BDF8")
+        self.lang_info_title.configure(text="Analyzing video metadata…", text_color=INK)
+        self.lang_info_tracks.configure(text="Fetching stream formats…", text_color=MUTED)
+
+        def _worker():
+            try:
+                import yt_dlp
+                from app.ytdl_utils import apply_ytdl_robust_options
+
+                ydl_opts = {
+                    "extract_flat": False,
+                    "skip_download": True,
+                    "quiet": True,
+                    "no_warnings": True,
+                    "socket_timeout": 8,
+                }
+                ydl_opts = apply_ytdl_robust_options(ydl_opts)
+
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    title = info.get("title", "Video") if info else "Video"
+                    formats = info.get("formats", []) if info else []
+                    LANG_DISPLAY = {
+                        "hi": "Hindi", "ur": "Urdu", "en": "English", "es": "Spanish",
+                        "ar": "Arabic", "fr": "French", "pt": "Portuguese", "de": "German",
+                        "ru": "Russian", "ja": "Japanese", "ko": "Korean", "tr": "Turkish",
+                        "bn": "Bengali", "it": "Italian", "pa": "Punjabi", "zh": "Chinese",
+                        "id": "Indonesian", "th": "Thai", "vi": "Vietnamese", "ta": "Tamil",
+                        "te": "Telugu", "mr": "Marathi", "ml": "Malayalam", "pl": "Polish",
+                    }
+                    detected_codes = set()
+                    audio_tracks = []
+
+                    for f in formats:
+                        if f.get("vcodec") == "none" and f.get("acodec") != "none":
+                            raw_lang = (f.get("language") or "").strip().lower()
+                            note = (f.get("format_note") or "").strip()
+                            code = raw_lang.split("-")[0] if raw_lang else ""
+                            if not code:
+                                for k in LANG_DISPLAY:
+                                    if k in note.lower() or LANG_DISPLAY[k].lower() in note.lower():
+                                        code = k
+                                        break
+                            if code and code not in detected_codes:
+                                detected_codes.add(code)
+                                friendly = LANG_DISPLAY.get(code, code.upper())
+                                is_orig = "orig" in note.lower() or "original" in raw_lang
+                                is_dub = "dub" in note.lower() or "dubbed" in raw_lang
+                                tag = " [Original]" if is_orig else (" [Dubbed]" if is_dub else "")
+                                audio_tracks.append(f"{friendly} ({code}){tag}")
+
+                    def _ui_success():
+                        self.btn_inspect_lang.configure(state="normal", text="🔍 Inspect Audio Tracks")
+                        self.lang_info_title.configure(text=f"🎬 {title}", text_color=INK)
+                        if len(audio_tracks) > 1:
+                            new_vals = ["Default / Original"] + audio_tracks + ["All Languages (Multi-Track)"]
+                            self.lang_menu.configure(values=new_vals)
+                            self.lang_detect_label.configure(
+                                text=f"✓ Detected {len(audio_tracks)} audio languages on this video!",
+                                text_color="#10B981",
+                            )
+                            self.lang_info_tracks.configure(
+                                text="Detected Tracks:  " + "  •  ".join(audio_tracks),
+                                text_color="#38BDF8",
+                            )
+                        else:
+                            self.lang_detect_label.configure(
+                                text="Standard single audio track detected",
+                                text_color=MUTED,
+                            )
+                            self.lang_info_tracks.configure(
+                                text="This video has 1 standard audio track. Selected language will be applied if available.",
+                                text_color=MUTED,
+                            )
+
+                    self.after(0, _ui_success)
+            except Exception as e:
+                def _ui_error(err=str(e)):
+                    self.btn_inspect_lang.configure(state="normal", text="🔍 Inspect Audio Tracks")
+                    self.lang_detect_label.configure(text="Could not probe video tracks automatically.", text_color="#EF4444")
+                    self.lang_info_title.configure(text="Video Inspection Notice", text_color=INK)
+                    self.lang_info_tracks.configure(
+                        text=f"Note: You can still select your preferred language below and click Download.\nDetails: {err[:150]}",
+                        text_color=MUTED,
+                    )
+
+                self.after(0, _ui_error)
+
+        import threading
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _start_language_download(self) -> None:
+        url = self.lang_url_var.get().strip()
+        if not url:
+            messagebox.showwarning("Missing URL", "Please enter or paste a valid video URL first.")
+            return
+
+        chosen_lang = self.lang_choice_var.get()
+        chosen_quality = self.lang_quality_var.get()
+        chosen_dest = self.lang_dest_var.get().strip()
+
+        self._queue_urls(
+            [url],
+            quality_override=chosen_quality,
+            audio_language_override=chosen_lang,
+            destination_override=chosen_dest,
+            allow_playlist_dialog=False,
+        )
+        self.show_page("downloads")
+
     def show_page(self, page: str) -> None:
-        for p in ("dashboard_page", "download_page", "image_downloader_page", "channel_hub_page",
+        for p in ("dashboard_page", "download_page", "language_downloader_page", "image_downloader_page", "channel_hub_page",
                   "tiktok_hub_page", "ig_hub_page", "x_hub_page", "converter_page", "sites_page",
                   "extension_page"):
             if hasattr(self, p):
@@ -4506,6 +4866,9 @@ class HQVideoDownloaderApp(ctk.CTk):
             active = self.download_page
             title_text = "General"
             self._filter_task_list()
+        elif page == "language_downloader":
+            active = self.language_downloader_page
+            title_text = "Download by Language"
         elif page == "image_downloader":
             active = self.image_downloader_page
             title_text = "Image Downloader"
@@ -5733,7 +6096,7 @@ class HQVideoDownloaderApp(ctk.CTk):
             done_event.wait()
             return result_holder[0]
 
-    def _queue_urls(self, urls: list[str], cookies_source: str = "", custom_title: str = "", quality_override: str = "", destination_override: str = "", http_headers: dict | None = None, referer: str = "", allow_playlist_dialog: bool = True) -> bool:
+    def _queue_urls(self, urls: list[str], cookies_source: str = "", custom_title: str = "", quality_override: str = "", audio_language_override: str = "", destination_override: str = "", http_headers: dict | None = None, referer: str = "", allow_playlist_dialog: bool = True) -> bool:
         if not self._check_device_not_banned():
             return False
 
@@ -5830,10 +6193,12 @@ class HQVideoDownloaderApp(ctk.CTk):
             else:
                 initial_filename = f"{item_numbering:02d}. Analyzing video…" if item_numbering else "Analyzing video…"
             task_quality = quality_override or selected_quality
+            task_audio_lang = audio_language_override or getattr(self.settings, "preferred_audio_language", "Default")
             task = DownloadTask(
                 url=url,
                 destination=base_dest,
                 quality=task_quality,
+                audio_language=task_audio_lang,
                 speed_limit_bps=speed_limit,
                 cookies_source=cookie_src,
                 filename=initial_filename,
